@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}Non-Bugs | Jira Analysis Dashboard{% endblock %}
+{% block head %}
+<style>
+table tr.flag-row, .table-striped > tbody > tr.flag-row {
+    background-color: #F44336 !important;
+    color: #fff !important;
+}
+</style>
+{% endblock %}
+{% block content %}
+<h2>Non-Bugs</h2>
+<p>View and analyze non-bug issues.</p>
+<div class="row mb-3">
+    <div class="col-md-3">
+        <label for="assignee" class="form-label">Assignee</label>
+        <select id="assignee" class="form-select">
+            <option value="">All</option>
+            {% for assignee in filters.assignees %}<option value="{{ assignee }}">{{ assignee }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label for="sentiment" class="form-label">Sentiment</label>
+        <select id="sentiment" class="form-select">
+            <option value="">All</option>
+            <option value="Positive">Positive</option>
+            <option value="Neutral">Neutral</option>
+            <option value="Negative">Negative</option>
+        </select>
+    </div>
+</div>
+<div class="card mb-4">
+    <div class="card-header fw-bold">Detailed Ticket Table</div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="ticketTable" class="table table-bordered small-table">
+                <thead>
+                    <tr>
+                        <th>Issue Key</th>
+                        <th>Assignee</th>
+                        <th>Sentiment</th>
+                        <th>Negative Reason</th>
+                        <th>Validation Flags</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_data %}
+                    <tr>
+                        <td>{{ row.issue_key }}</td>
+                        <td>{{ row.assignee }}</td>
+                        <td>{{ row.sentiment }}</td>
+                        <td>
+                            {% set neg_reason_str = row.negative_reason|string %}
+                            <span title="{{ neg_reason_str }}">
+                                {{ neg_reason_str[:80] }}{% if neg_reason_str|length > 80 %}...{% endif %}
+                            </span>
+                        </td>
+                        <td>{{ row.validation_flags }}</td>
+                        <td>
+                            {% set comment_str = row.comment|string %}
+                            <span title="{{ comment_str }}">
+                                {{ comment_str[:80] }}{% if comment_str|length > 80 %}...{% endif %}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div id="nonbug-table"></div>
+<div id="nonbug-charts"></div>
+{% endblock %}
+{% block scripts %}
+<style>
+.small-table {
+    font-size: 0.85rem;
+}
+.small-table th, .small-table td {
+    padding: 0.3rem 0.5rem;
+}
+</style>
+<script>
+$(document).ready(function() {
+    var table = $('#ticketTable').DataTable({
+        "createdRow": function(row, data, dataIndex) {
+            // Sentiment is in column 2 (index 2)
+            if (data[2] && data[2].trim() === 'Negative') {
+                $('td', row).css({
+                    'background-color': '#F44336',
+                    'color': '#fff'
+                });
+            }
+        }
+    });
+    // Assignee filter (column 1)
+    $('#assignee').on('change', function() {
+        var val = $(this).val();
+        table.column(1).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+    // Sentiment filter (column 2)
+    $('#sentiment').on('change', function() {
+        var val = $(this).val();
+        table.column(2).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+});
+</script>
+{% endblock %} 

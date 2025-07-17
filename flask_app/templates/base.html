@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Jira Analysis Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .navbar-brand img { height: 40px; margin-right: 10px; }
+    </style>
+    {% block head %}{% endblock %}
+    <!-- jQuery FIRST -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4" style="background-color: #003366 !important;">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <img src="{{ url_for('static', filename='ThinkPalm-1600954633534.avif') }}" alt="ThinkPalm Logo">
+            Sentiment Analysis Dashboard
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link text-white" href="/">Home</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="/engineer">Engineer Drilldown</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="/bugs">Bugs</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="/nonbugs">Non-Bugs</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="/gerrit">Gerrit Analysis</a></li>
+            </ul>
+            <form method="post" action="/set_team" class="d-flex ms-3" style="min-width:180px;">
+                <select name="selected_team" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="" {% if selected_team == '' %}selected{% endif %}>Select Team</option>
+                    {% for team in team_list %}
+                    <option value="{{ team }}" {% if selected_team == team %}selected{% endif %}>{{ team }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </div>
+</nav>
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html> 

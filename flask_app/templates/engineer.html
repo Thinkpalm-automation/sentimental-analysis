@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Engineer Drilldown | Jira Analysis Dashboard{% endblock %}
+{% block head %}
+<style>
+.small-table {
+    font-size: 0.85rem;
+}
+.small-table th, .small-table td {
+    padding: 0.3rem 0.5rem;
+}
+.positive-cell { background: #4CAF50; color: #fff; }
+.neutral-cell { background: #BDBDBD; color: #fff; }
+.negative-cell { background: #F44336; color: #fff; }
+</style>
+{% endblock %}
+{% block content %}
+<h2>Engineer Drilldown</h2>
+<form method="get" class="mb-3">
+    <label for="member" class="form-label">Team Member</label>
+    <select id="member" name="member" class="form-select" style="max-width:300px;display:inline-block;">
+        <option value="All" {% if selected_member == 'All' %}selected{% endif %}>All Members</option>
+        {% for member in filters.members %}
+        <option value="{{ member }}" {% if selected_member == member %}selected{% endif %}>{{ member }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary ms-2">Apply</button>
+</form>
+<div class="table-responsive">
+    <table class="table table-bordered small-table">
+        <thead>
+            <tr style="background: #BDBDBD; color: #fff;">
+                <th rowspan="2">Team Member</th>
+                <th colspan="2" class="text-center">Bugs</th>
+                <th colspan="2" class="text-center">Non-Bugs</th>
+                <th colspan="2" class="text-center">Gerrit</th>
+            </tr>
+            <tr>
+                <th>Bugs Positive</th>
+                <th>Bugs Negative</th>
+                <th>Non-Bugs Positive</th>
+                <th>Non-Bugs Negative</th>
+                <th>Gerrit Positive</th>
+                <th>Gerrit Negative</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in summary %}
+            <tr>
+                <td>{{ row.member }}</td>
+                <td style="{% if row.bugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.bugs.Positive }}</td>
+                <td style="{% if row.bugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.bugs.Negative }}</td>
+                <td style="{% if row.nonbugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.nonbugs.Positive }}</td>
+                <td style="{% if row.nonbugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.nonbugs.Negative }}</td>
+                <td style="{% if row.gerrit.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.gerrit.Positive }}</td>
+                <td style="{% if row.gerrit.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.gerrit.Negative }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}{% endblock %} 

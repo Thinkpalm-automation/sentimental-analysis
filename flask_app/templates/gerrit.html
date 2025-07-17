@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block title %}Gerrit Analysis | Jira Analysis Dashboard{% endblock %}
+{% block content %}
+<h2>Gerrit Analysis</h2>
+{% if missing_files %}
+<div class="alert alert-danger" role="alert">
+    Please upload both a JIRA CSV/Excel and a Gerrit JSON file on the Home page.
+</div>
+{% endif %}
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title">Total Bugs</h6>
+                <div class="display-6">{{ total_bugs }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title">Total Non-Bugs</h6>
+                <div class="display-6">{{ total_nonbugs }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title">Total Gerrit Entries</h6>
+                <div class="display-6">{{ total_gerrit }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mb-3">
+    <div class="col-md-3">
+        <label for="author" class="form-label">Author</label>
+        <select id="author" class="form-select">
+            <option value="">All</option>
+            {% for row in gerrit_table|unique(attribute='Author') %}<option value="{{ row['Author'] }}">{{ row['Author'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label for="team_member" class="form-label">Team Member</label>
+        <select id="team_member" class="form-select">
+            <option value="">All</option>
+            {% for row in gerrit_table|unique(attribute='Assignee') %}<option value="{{ row['Assignee'] }}">{{ row['Assignee'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label for="sentiment" class="form-label">Sentiment</label>
+        <select id="sentiment" class="form-select">
+            <option value="">All</option>
+            <option value="Positive">Positive</option>
+            <option value="Neutral">Neutral</option>
+            <option value="Negative">Negative</option>
+        </select>
+    </div>
+</div>
+<div class="my-4">
+    <!-- Remove any upload form or instructions for Gerrit JSON upload -->
+</div>
+<div class="card mb-4">
+    <div class="card-header fw-bold">Gerrit Comment Sentiment Table</div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="gerritTable" class="table table-striped table-bordered small-table">
+                <thead>
+                    <tr>
+                        <th>Patch Set</th>
+                        <th>Author</th>
+                        <th>Team Member</th>
+                        <th>Line Number</th>
+                        <th>Message</th>
+                        <th>Sentiment</th>
+                        <th>Negative Keyword</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in gerrit_table %}
+                    <tr class="{% if row['Gerrit Sentiment'] == 'Negative' %}flag-row{% endif %}">
+                        <td>{{ row['Patch Set'] }}</td>
+                        <td>{{ row['Author'] }}</td>
+                        <td>{{ row['Assignee'] }}</td>
+                        <td>{{ row['Line Number'] }}</td>
+                        <td>{{ row['Message'] }}</td>
+                        <td>{{ row['Gerrit Sentiment'] }}</td>
+                        <td>{{ row['Negative keyword observed'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div id="gerrit-table"></div>
+<div id="gerrit-charts"></div>
+{% endblock %}
+{% block scripts %}
+<style>
+.small-table {
+    font-size: 0.85rem;
+}
+.small-table th, .small-table td {
+    padding: 0.3rem 0.5rem;
+}
+</style>
+<script>
+$(document).ready(function() {
+    var table = $('#gerritTable').DataTable({
+        dom: 't', // Remove default search box
+        "createdRow": function(row, data, dataIndex) {
+            // Sentiment is in column 5 (index 5 after adding Team Member column)
+            if (data[5] && data[5].trim() === 'Negative') {
+                $('td', row).css({
+                    'background-color': '#F44336',
+                    'color': '#fff'
+                });
+            }
+        }
+    });
+    // Author filter (column 1)
+    $('#author').on('change', function() {
+        var val = $(this).val();
+        table.column(1).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+    // Team Member filter (column 2)
+    $('#team_member').on('change', function() {
+        var val = $(this).val();
+        table.column(2).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+    // Sentiment filter (column 5)
+    $('#sentiment').on('change', function() {
+        var val = $(this).val();
+        table.column(5).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+});
+</script>
+{% endblock %} 
