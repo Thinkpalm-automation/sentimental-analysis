@@ -89,7 +89,7 @@ def story_points_flag(row):
         sp = float(row.get("Custom field (Story Points)", 0))
     except (TypeError, ValueError):
         sp = 0
-    return "🚩 High Story Points" if str(row.get("Issue Type", "")).strip().lower() != "bug" and sp >= 5 else ""
+    return "🚩 High Story Points" if str(row.get("Issue Type", "")).strip().lower() != "bug" and sp > 8 else ""
 
 def get_gerrit_sentiment(comment):
     if pd.isna(comment) or str(comment).strip() == "":
@@ -356,22 +356,36 @@ def home():
             "date_start": str(processed_df['Created'].min())[:10] if 'Created' in processed_df and not processed_df['Created'].isnull().all() else "",
             "date_end": str(processed_df['Created'].max())[:10] if 'Created' in processed_df and not processed_df['Created'].isnull().all() else ""
         }
+        # Calculate total_comments for overall CSV (not filtered)
         total_comments = len(processed_df)
-        positive = (processed_df['Customer Sentiment'] == 'Positive').sum()
-        negative = (processed_df['Customer Sentiment'] == 'Negative').sum()
-        users_flagged = processed_df[processed_df['Customer Sentiment'] == 'Negative']['Assignee'].nunique() if 'Assignee' in processed_df else 0
+        # Filter for selected team for all other KPIs and table
+        if selected_team in TEAM_MEMBERS_DICT:
+            team_members = TEAM_MEMBERS_DICT[selected_team]
+            bug_mask = (processed_df['Issue Type'].str.lower().str.strip() == 'bug')
+            is_team_reporter = processed_df['Reporter'].isin(team_members)
+            nonbug_mask = (processed_df['Issue Type'].str.lower().str.strip() != 'bug')
+            is_team_assignee = processed_df['Assignee'].isin(team_members)
+            filtered_df = pd.concat([
+                processed_df[bug_mask & is_team_reporter],
+                processed_df[nonbug_mask & is_team_assignee]
+            ])
+        else:
+            filtered_df = processed_df.iloc[0:0]
+        positive = (filtered_df['Customer Sentiment'] == 'Positive').sum()
+        negative = (filtered_df['Customer Sentiment'] == 'Negative').sum()
+        users_flagged = filtered_df[filtered_df['Customer Sentiment'] == 'Negative']['Assignee'].nunique() if 'Assignee' in filtered_df else 0
         kpis = {
             "total_comments": total_comments,
-            "positive_pct": round(positive / total_comments * 100) if total_comments else 0,
-            "negative_pct": round(negative / total_comments * 100) if total_comments else 0,
+            "positive_pct": round(positive / len(filtered_df) * 100) if len(filtered_df) else 0,
+            "negative_pct": round(negative / len(filtered_df) * 100) if len(filtered_df) else 0,
             "users_flagged": users_flagged
         }
         flags = [
             {"issue_key": row["Issue key"], "flag_reason": row["Validation Flags"]}
-            for _, row in processed_df.iterrows()
+            for _, row in filtered_df.iterrows()
             if row.get("Validation Flags")
         ]
-        table_data = processed_df[["Issue key", "Status", "Assignee", "Customer Sentiment", "Validation Flags", "Comment"]].to_dict(orient="records")
+        table_data = filtered_df[["Issue key", "Status", "Assignee", "Customer Sentiment", "Validation Flags", "Comment"]].to_dict(orient="records")
         # --- Team Sentiment Aggregation ---
         # Only include core team members for the selected team
         if selected_team in TEAM_MEMBERS_DICT:
@@ -381,11 +395,11 @@ def home():
         issue_key_to_assignee = dict(zip(processed_df['Issue key'], processed_df['Assignee']))
         for assignee in assignees:
             team_sentiment[assignee] = {"Positive": 0, "Neutral": 0, "Negative": 0}
-            # Bugs
-            bug_rows = processed_df[(processed_df['Assignee'] == assignee) & (processed_df['Issue Type'].str.lower() == 'bug')]
+            # Bugs (by Reporter, to match engineer drilldown)
+            bug_rows = processed_df[(processed_df['Reporter'] == assignee) & (processed_df['Issue Type'].str.lower() == 'bug')]
             for sentiment in ["Positive", "Neutral", "Negative"]:
                 team_sentiment[assignee][sentiment] += (bug_rows['Customer Sentiment'] == sentiment).sum()
-            # Non-bugs
+            # Non-bugs (by Assignee)
             nonbug_rows = processed_df[(processed_df['Assignee'] == assignee) & (processed_df['Issue Type'].str.lower() != 'bug')]
             for sentiment in ["Positive", "Neutral", "Negative"]:
                 team_sentiment[assignee][sentiment] += (nonbug_rows['Customer Sentiment'] == sentiment).sum()
@@ -403,12 +417,10 @@ def home():
                             for comment in comment_list:
                                 if isinstance(comment, dict):
                                     msg = comment.get('message')
-                                    author = comment.get('author', {}).get('name', '')
-                                    # Only count if author matches assignee
-                                    if author and author == assignee:
-                                        sentiment, _, _ = get_gerrit_sentiment(msg)
-                                        if sentiment in team_sentiment[assignee]:
-                                            team_sentiment[assignee][sentiment] += 1
+                                    # Count for assignee regardless of author
+                                    sentiment, _, _ = get_gerrit_sentiment(msg)
+                                    if sentiment in team_sentiment[assignee]:
+                                        team_sentiment[assignee][sentiment] += 1
         # --- Overall sentiment sum for chart ---
         for assignee, counts in team_sentiment.items():
             for sentiment in ["Positive", "Neutral", "Negative"]:
@@ -428,21 +440,28 @@ def home():
         # --- Convert all values to native int for JSON serialization ---
         team_sentiment = to_native_int(team_sentiment)
         chart_data = to_native_int(chart_data)
+        # Ensure selected_team is always set in team_sentiment_dict for the charts
+        if selected_team in TEAM_MEMBERS_DICT:
+            team_sentiment_dict[selected_team] = team_sentiment
+        # Only build team_sentiment_dict for all teams (for drilldown), do not overwrite selected_team's data
         for team, members in TEAM_MEMBERS_DICT.items():
+            if team == selected_team:
+                # Do not overwrite selected_team's Gerrit-inclusive data
+                continue
             assignees = [a for a in members if a in processed_df['Assignee'].dropna().unique().tolist()]
-            team_sentiment = {}
+            team_sentiment_other = {}
             issue_key_to_assignee = dict(zip(processed_df['Issue key'], processed_df['Assignee']))
             for assignee in assignees:
-                team_sentiment[assignee] = {"Positive": 0, "Neutral": 0, "Negative": 0}
+                team_sentiment_other[assignee] = {"Positive": 0, "Neutral": 0, "Negative": 0}
                 # Bugs
                 bug_rows = processed_df[(processed_df['Assignee'] == assignee) & (processed_df['Issue Type'].str.lower() == 'bug')]
                 for sentiment in ["Positive", "Neutral", "Negative"]:
-                    team_sentiment[assignee][sentiment] += (bug_rows['Customer Sentiment'] == sentiment).sum()
+                    team_sentiment_other[assignee][sentiment] += (bug_rows['Customer Sentiment'] == sentiment).sum()
                 # Non-bugs
                 nonbug_rows = processed_df[(processed_df['Assignee'] == assignee) & (processed_df['Issue Type'].str.lower() != 'bug')]
                 for sentiment in ["Positive", "Neutral", "Negative"]:
-                    team_sentiment[assignee][sentiment] += (nonbug_rows['Customer Sentiment'] == sentiment).sum()
-            team_sentiment_dict[team] = to_native_int(team_sentiment)
+                    team_sentiment_other[assignee][sentiment] += (nonbug_rows['Customer Sentiment'] == sentiment).sum()
+            team_sentiment_dict[team] = to_native_int(team_sentiment_other)
         if selected_team in TEAM_MEMBERS_DICT:
             team_members = TEAM_MEMBERS_DICT[selected_team]
             # Total bugs: Reporter is a team member
@@ -581,6 +600,8 @@ def bugs():
     print('[BUGS] Current selected_team in session:', selected_team)
     table_data = []
     filters = {"reporters": []}
+    reporter_filter = request.args.get('reporter')
+    sentiment_filter = request.args.get('sentiment')
     if 'jira_file' in session:
         filename = session['jira_file']
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -598,6 +619,10 @@ def bugs():
             else:
                 bug_df = bug_df.iloc[0:0]  # Empty
                 filters["reporters"] = []
+            if reporter_filter:
+                bug_df = bug_df[bug_df['Reporter'] == reporter_filter]
+            if sentiment_filter:
+                bug_df = bug_df[bug_df['Customer Sentiment'] == sentiment_filter]
             table_data = bug_df[["Issue key", "Status", "Reporter", "Customer Sentiment", "Comment", "Negative Reason", "Validation Flags"]].rename(columns={
                 "Issue key": "issue_key",
                 "Status": "status",
@@ -617,6 +642,8 @@ def nonbugs():
     print('[NONBUGS] Current selected_team in session:', selected_team)
     table_data = []
     filters = {"assignees": []}
+    assignee_filter = request.args.get('assignee')
+    sentiment_filter = request.args.get('sentiment')
     if request.method == 'POST':
         if 'gerrit_file' in request.files:
             file = request.files['gerrit_file']
@@ -645,12 +672,17 @@ def nonbugs():
             else:
                 nonbug_df = nonbug_df.iloc[0:0]
                 filters["assignees"] = []
-            table_data = nonbug_df[["Issue key", "Assignee", "Customer Sentiment", "Comment", "Negative Reason", "Validation Flags"]].rename(columns={
+            if assignee_filter:
+                nonbug_df = nonbug_df[nonbug_df['Assignee'] == assignee_filter]
+            if sentiment_filter:
+                nonbug_df = nonbug_df[nonbug_df['Customer Sentiment'] == sentiment_filter]
+            table_data = nonbug_df[["Issue key", "Assignee", "Customer Sentiment", "Comment", "Negative Reason", "Custom field (Story Points)", "Validation Flags"]].rename(columns={
                 "Issue key": "issue_key",
                 "Assignee": "assignee",
                 "Customer Sentiment": "sentiment",
                 "Comment": "comment",
                 "Negative Reason": "negative_reason",
+                "Custom field (Story Points)": "story_points",
                 "Validation Flags": "validation_flags"
             }).to_dict(orient="records")
         except Exception:
@@ -668,6 +700,8 @@ def gerrit():
     import json
     # Check both files are present
     missing_files = False
+    assignee_filter = request.args.get('assignee')
+    sentiment_filter = request.args.get('sentiment')
     if 'jira_file' not in session or 'gerrit_file' not in session:
         missing_files = True
         return render_template('gerrit.html', gerrit_table=[], missing_files=missing_files, total_bugs=0, total_nonbugs=0, total_gerrit=0)
@@ -702,16 +736,14 @@ def gerrit():
     try:
         with open(gerrit_filepath, 'r', encoding='utf-8') as f:
             gerrit_data = json.load(f)
-        if gerrit_data:
-            print('[GERRIT] Sample Gerrit entry:', gerrit_data[0])
-        # Only analyze entries with issue_key in uploaded JIRA for selected team
         gerrit_issue_keys = set()
         for entry in gerrit_data:
             issue_key = entry.get('issue_key')
             assignee = issue_key_to_assignee.get(issue_key)
-            if not issue_key or not assignee:
+            if not assignee or assignee not in TEAM_MEMBERS_DICT.get(selected_team, []):
                 continue
-            gerrit_issue_keys.add(issue_key)
+            if assignee_filter and assignee != assignee_filter:
+                continue
             comments = entry.get('comments', {})
             if isinstance(comments, dict):
                 for comment_list in comments.values():
@@ -720,6 +752,8 @@ def gerrit():
                             if isinstance(comment, dict):
                                 msg = comment.get('message')
                                 sentiment, _, neg_keyword = get_gerrit_sentiment(msg)
+                                if sentiment_filter and sentiment != sentiment_filter:
+                                    continue
                                 # Robustly extract author name
                                 author = ''
                                 author_obj = comment.get('author')
@@ -737,9 +771,8 @@ def gerrit():
                                     'Issue Key': issue_key,
                                     'Assignee': assignee
                                 })
+                                gerrit_issue_keys.add(issue_key)
         total_gerrit = len(gerrit_issue_keys)
-        # Optionally, filter to only negatives:
-        # gerrit_table = [row for row in gerrit_table if row['Gerrit Sentiment'] == 'Negative']
     except Exception as e:
         flash(f'Error processing Gerrit JSON: {e}', 'danger')
         gerrit_table = []

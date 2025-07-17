@@ -47,12 +47,48 @@
             {% for row in summary %}
             <tr>
                 <td>{{ row.member }}</td>
-                <td style="{% if row.bugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.bugs.Positive }}</td>
-                <td style="{% if row.bugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.bugs.Negative }}</td>
-                <td style="{% if row.nonbugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.nonbugs.Positive }}</td>
-                <td style="{% if row.nonbugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.nonbugs.Negative }}</td>
-                <td style="{% if row.gerrit.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">{{ row.gerrit.Positive }}</td>
-                <td style="{% if row.gerrit.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">{{ row.gerrit.Negative }}</td>
+                <td style="{% if row.bugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">
+                    {% if row.bugs.Positive > 0 %}
+                        <a href="/bugs?reporter={{ row.member|urlencode }}&sentiment=Positive" style="color:inherit;text-decoration:underline;">{{ row.bugs.Positive }}</a>
+                    {% else %}
+                        {{ row.bugs.Positive }}
+                    {% endif %}
+                </td>
+                <td style="{% if row.bugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">
+                    {% if row.bugs.Negative > 0 %}
+                        <a href="/bugs?reporter={{ row.member|urlencode }}&sentiment=Negative" style="color:inherit;text-decoration:underline;">{{ row.bugs.Negative }}</a>
+                    {% else %}
+                        {{ row.bugs.Negative }}
+                    {% endif %}
+                </td>
+                <td style="{% if row.nonbugs.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">
+                    {% if row.nonbugs.Positive > 0 %}
+                        <a href="/nonbugs?assignee={{ row.member|urlencode }}&sentiment=Positive" style="color:inherit;text-decoration:underline;">{{ row.nonbugs.Positive }}</a>
+                    {% else %}
+                        {{ row.nonbugs.Positive }}
+                    {% endif %}
+                </td>
+                <td style="{% if row.nonbugs.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">
+                    {% if row.nonbugs.Negative > 0 %}
+                        <a href="/nonbugs?assignee={{ row.member|urlencode }}&sentiment=Negative" style="color:inherit;text-decoration:underline;">{{ row.nonbugs.Negative }}</a>
+                    {% else %}
+                        {{ row.nonbugs.Negative }}
+                    {% endif %}
+                </td>
+                <td style="{% if row.gerrit.Positive > 0 %}background:#4CAF50;color:#fff;{% endif %}">
+                    {% if row.gerrit.Positive > 0 %}
+                        <a href="/gerrit?assignee={{ row.member|urlencode }}&sentiment=Positive" style="color:inherit;text-decoration:underline;">{{ row.gerrit.Positive }}</a>
+                    {% else %}
+                        {{ row.gerrit.Positive }}
+                    {% endif %}
+                </td>
+                <td style="{% if row.gerrit.Negative > 0 %}background:#F44336;color:#fff;{% endif %}">
+                    {% if row.gerrit.Negative > 0 %}
+                        <a href="/gerrit?assignee={{ row.member|urlencode }}&sentiment=Negative" style="color:inherit;text-decoration:underline;">{{ row.gerrit.Negative }}</a>
+                    {% else %}
+                        {{ row.gerrit.Negative }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

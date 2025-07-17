@@ -40,6 +40,7 @@ table tr.flag-row, .table-striped > tbody > tr.flag-row {
                         <th>Assignee</th>
                         <th>Sentiment</th>
                         <th>Negative Reason</th>
+                        <th>Story Points</th>
                         <th>Validation Flags</th>
                         <th>Comment</th>
                     </tr>
@@ -56,6 +57,7 @@ table tr.flag-row, .table-striped > tbody > tr.flag-row {
                                 {{ neg_reason_str[:80] }}{% if neg_reason_str|length > 80 %}...{% endif %}
                             </span>
                         </td>
+                        <td>{{ row.story_points }}</td>
                         <td>{{ row.validation_flags }}</td>
                         <td>
                             {% set comment_str = row.comment|string %}

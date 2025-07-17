@@ -64,46 +64,56 @@
     {% endif %}
     <div class="row mb-2 justify-content-center">
         <div class="col-12 col-md-4 mb-2 mb-md-0">
+            <a href="/bugs" style="text-decoration:none;">
             <div class="card text-center h-100">
                 <div class="card-body p-2 bg-primary text-white">
                     <h6 class="card-title mb-1">Bugs</h6>
                     <div class="display-6">{{ total_bugs }}</div>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-12 col-md-4 mb-2 mb-md-0">
+            <a href="/nonbugs" style="text-decoration:none;">
             <div class="card text-center h-100">
                 <div class="card-body p-2 bg-primary text-white">
                     <h6 class="card-title mb-1">Non-Bugs</h6>
                     <div class="display-6">{{ total_nonbugs }}</div>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-12 col-md-4">
+            <a href="/gerrit" style="text-decoration:none;">
             <div class="card text-center h-100">
                 <div class="card-body p-2 bg-primary text-white">
                     <h6 class="card-title mb-1">Gerrit</h6>
                     <div class="display-6">{{ total_gerrit }}</div>
                 </div>
             </div>
+            </a>
         </div>
     </div>
     <div class="row justify-content-center">
         <div class="col-12 col-md-6 mb-2 mb-md-0">
+            <a href="/engineer" style="text-decoration:none;">
             <div class="card text-center card-positive h-100">
                 <div class="card-body p-2">
                     <h6 class="card-title mb-1">Positive %</h6>
                     <div class="display-6">{{ kpis.positive_pct }}%</div>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-12 col-md-6">
+            <a href="/engineer" style="text-decoration:none;">
             <div class="card text-center card-negative h-100">
                 <div class="card-body p-2">
                     <h6 class="card-title mb-1">Negative %</h6>
                     <div class="display-6">{{ kpis.negative_pct }}%</div>
                 </div>
             </div>
+            </a>
         </div>
     </div>
 </div>
@@ -146,13 +156,21 @@ const pieCtx = document.getElementById('sentimentPie').getContext('2d');
 let sentimentPie = new Chart(pieCtx, {
     type: 'doughnut',
     data: {
-        labels: ['Positive', 'Neutral', 'Negative'],
+        labels: ['Positive', 'Negative'],
         datasets: [{
-            data: [0, 0, 0],
-            backgroundColor: ['#4CAF50', '#BDBDBD', '#F44336']
+            data: [0, 0],
+            backgroundColor: ['#4CAF50', '#F44336']
         }]
     },
-    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom' } },
+        onClick: function(evt, elements) {
+            if (elements && elements.length > 0) {
+                window.location.href = '/engineer';
+            }
+        }
+    }
 });
 // Chart.js Bar
 const barCtx = document.getElementById('assigneeBar').getContext('2d');
@@ -166,7 +184,20 @@ let assigneeBar = new Chart(barCtx, {
             backgroundColor: '#F44336'
         }]
     },
-    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } } }
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        onClick: function(evt, elements) {
+            if (elements && elements.length > 0) {
+                var barIndex = elements[0].index;
+                var member = this.data.labels[barIndex];
+                if (member) {
+                    window.location.href = '/engineer?member=' + encodeURIComponent(member);
+                }
+            }
+        }
+    }
 });
 
 // Hide charts initially
@@ -175,15 +206,14 @@ $(document).ready(function() {
     if (selectedTeam && teamSentiment[selectedTeam]) {
         $('.row.mb-4.g-3').show();
         const teamData = teamSentiment[selectedTeam] || {};
-        let pie = [0, 0, 0];
+        let pie = [0, 0];
         let barLabels = [];
         let barValues = [];
         if (Object.keys(teamData).length > 0) {
             for (const member in teamData) {
                 const memberData = teamData[member];
                 pie[0] += memberData["Positive"];
-                pie[1] += memberData["Neutral"];
-                pie[2] += memberData["Negative"];
+                pie[1] += memberData["Negative"];
                 barLabels.push(member);
                 barValues.push(memberData["Negative"]);
             }
