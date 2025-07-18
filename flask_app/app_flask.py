@@ -372,11 +372,13 @@ def home():
         else:
             filtered_df = processed_df.iloc[0:0]
         positive = (filtered_df['Customer Sentiment'] == 'Positive').sum()
+        neutral = (filtered_df['Customer Sentiment'] == 'Neutral').sum()
         negative = (filtered_df['Customer Sentiment'] == 'Negative').sum()
         users_flagged = filtered_df[filtered_df['Customer Sentiment'] == 'Negative']['Assignee'].nunique() if 'Assignee' in filtered_df else 0
         kpis = {
             "total_comments": total_comments,
             "positive_pct": round(positive / len(filtered_df) * 100) if len(filtered_df) else 0,
+            "neutral_pct": round(neutral / len(filtered_df) * 100) if len(filtered_df) else 0,
             "negative_pct": round(negative / len(filtered_df) * 100) if len(filtered_df) else 0,
             "users_flagged": users_flagged
         }
@@ -779,4 +781,4 @@ def gerrit():
     return render_template('gerrit.html', gerrit_table=gerrit_table, missing_files=missing_files, total_bugs=total_bugs, total_nonbugs=total_nonbugs, total_gerrit=total_gerrit)
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(host="127.0.0.1", port=8000, debug=True) 

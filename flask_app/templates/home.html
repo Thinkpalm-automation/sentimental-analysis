@@ -43,7 +43,7 @@
         <input type="file" name="jira_file" class="form-control mb-2" required>
         <label for="gerrit_file" class="form-label">Consolidated Gerrit Comments (JSON, optional)</label>
         <input type="file" name="gerrit_file" class="form-control mb-2">
-        <button type="submit" class="btn btn-primary">Upload</button>
+        <button type="submit" class="btn" style="background:#1565c0; color:#fff;">Upload</button>
     </form>
 </div>
 {% if kpis.total_comments > 0 %}
@@ -66,7 +66,7 @@
         <div class="col-12 col-md-4 mb-2 mb-md-0">
             <a href="/bugs" style="text-decoration:none;">
             <div class="card text-center h-100">
-                <div class="card-body p-2 bg-primary text-white">
+                <div class="card-body p-2" style="background:#1565c0; color:#fff;">
                     <h6 class="card-title mb-1">Bugs</h6>
                     <div class="display-6">{{ total_bugs }}</div>
                 </div>
@@ -76,7 +76,7 @@
         <div class="col-12 col-md-4 mb-2 mb-md-0">
             <a href="/nonbugs" style="text-decoration:none;">
             <div class="card text-center h-100">
-                <div class="card-body p-2 bg-primary text-white">
+                <div class="card-body p-2" style="background:#1565c0; color:#fff;">
                     <h6 class="card-title mb-1">Non-Bugs</h6>
                     <div class="display-6">{{ total_nonbugs }}</div>
                 </div>
@@ -86,7 +86,7 @@
         <div class="col-12 col-md-4">
             <a href="/gerrit" style="text-decoration:none;">
             <div class="card text-center h-100">
-                <div class="card-body p-2 bg-primary text-white">
+                <div class="card-body p-2" style="background:#1565c0; color:#fff;">
                     <h6 class="card-title mb-1">Gerrit</h6>
                     <div class="display-6">{{ total_gerrit }}</div>
                 </div>
@@ -95,25 +95,23 @@
         </div>
     </div>
     <div class="row justify-content-center">
-        <div class="col-12 col-md-6 mb-2 mb-md-0">
-            <a href="/engineer" style="text-decoration:none;">
-            <div class="card text-center card-positive h-100">
+        <div class="col-12">
+            <div class="card text-center h-100">
                 <div class="card-body p-2">
-                    <h6 class="card-title mb-1">Positive %</h6>
-                    <div class="display-6">{{ kpis.positive_pct }}%</div>
+                    <h6 class="card-title mb-1">Sentiment Distribution (%)</h6>
+                    <div class="sentiment-progress my-3" style="display: flex; height: 40px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px #ccc;">
+                      <div style="background:#388E3C; color:#fff; width:{{ kpis.positive_pct }}%; display:flex; align-items:center; justify-content:center; font-weight:bold;">
+                        {{ kpis.positive_pct }}% Positive
+                      </div>
+                      <div style="background:#81C784; color:#fff; width:{{ kpis.neutral_pct }}%; display:flex; align-items:center; justify-content:center; font-weight:bold;">
+                        {{ kpis.neutral_pct }}% Neutral
+                      </div>
+                      <div style="background:#F44336; color:#fff; width:{{ kpis.negative_pct }}%; display:flex; align-items:center; justify-content:center; font-weight:bold;">
+                        {{ kpis.negative_pct }}% Negative
+                      </div>
+                    </div>
                 </div>
             </div>
-            </a>
-        </div>
-        <div class="col-12 col-md-6">
-            <a href="/engineer" style="text-decoration:none;">
-            <div class="card text-center card-negative h-100">
-                <div class="card-body p-2">
-                    <h6 class="card-title mb-1">Negative %</h6>
-                    <div class="display-6">{{ kpis.negative_pct }}%</div>
-                </div>
-            </div>
-            </a>
         </div>
     </div>
 </div>
@@ -156,10 +154,10 @@ const pieCtx = document.getElementById('sentimentPie').getContext('2d');
 let sentimentPie = new Chart(pieCtx, {
     type: 'doughnut',
     data: {
-        labels: ['Positive', 'Negative'],
+        labels: ['Positive', 'Neutral', 'Negative'],
         datasets: [{
-            data: [0, 0],
-            backgroundColor: ['#4CAF50', '#F44336']
+            data: [0, 0, 0],
+            backgroundColor: ['#388E3C', '#81C784', '#F44336']
         }]
     },
     options: {
@@ -206,14 +204,15 @@ $(document).ready(function() {
     if (selectedTeam && teamSentiment[selectedTeam]) {
         $('.row.mb-4.g-3').show();
         const teamData = teamSentiment[selectedTeam] || {};
-        let pie = [0, 0];
+        let pie = [0, 0, 0];
         let barLabels = [];
         let barValues = [];
         if (Object.keys(teamData).length > 0) {
             for (const member in teamData) {
                 const memberData = teamData[member];
                 pie[0] += memberData["Positive"];
-                pie[1] += memberData["Negative"];
+                pie[1] += memberData["Neutral"];
+                pie[2] += memberData["Negative"];
                 barLabels.push(member);
                 barValues.push(memberData["Negative"]);
             }
