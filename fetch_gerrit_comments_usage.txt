@@ -1,0 +1,61 @@
+
+## User Guide: fetch_gerrit_comments.py
+
+### Purpose
+This script extracts Gerrit code review comments related to JIRA issues from a JIRA CSV export, downloads the comments from Gerrit, and consolidates them into a single JSON file for further analysis.
+
+---
+
+### Prerequisites
+- Python 3.x installed
+- Access to the JIRA CSV export file
+- Gerrit (HTTP)credentials (username and password)
+- Internet access to reach the Gerrit server
+
+---
+
+### How to Use
+
+1. **Open a terminal or command prompt.**
+2. **Navigate to the script’s directory:**
+   
+   cd C:\Users\testuser\Documents\Jira Analysis\flask_app
+
+3. **Run the script with required arguments:**
+   python fetch_gerrit_comments.py --csv <path_to_jira_csv> --user <gerrit_username> --password <gerrit_password>
+
+   - Replace `<path_to_jira_csv>` with the path to your JIRA CSV file (e.g., `Jira_squad_6_weeks_data.csv`).
+   - Replace `<gerrit_username>` and `<gerrit_password>` with your Gerrit (HTTP)credentials.
+
+   **Example:**
+   python fetch_gerrit_comments.py --csv Jira_squad_6_weeks_data.csv --user johndoe --password sde2e34dEFs4567BGa2d34g
+---
+
+### What the Script Does
+
+- **Extracts** all JIRA issue keys and Gerrit links from the provided CSV.
+- **For each Gerrit link:**
+  - Fetches the commit message and checks which JIRA issues it addresses.
+  - Downloads all comments for the Gerrit change.
+  - Saves each set of comments to a JSON file named `<issue_key>_<project>_<change_number>.json`.
+- **Consolidates** all downloaded comments into a single file:  
+  `consolidated_gerrit_comments.json`
+
+---
+
+### Output
+
+- Individual JSON files for each issue/project/change (for reference).
+- A single consolidated file:  
+  `consolidated_gerrit_comments.json`  
+  This file contains all the relevant comments and is ready for use in further analysis or dashboards.
+
+---
+
+### Troubleshooting
+
+- **Authentication errors:** Double-check your Gerrit username and password.
+- **Network errors:** Ensure you have internet access and can reach `gerrit.eng.cohesity.com`.
+- **CSV errors:** Make sure your CSV file is exported from JIRA and contains the necessary columns.
+
+---
