@@ -38,7 +38,6 @@
             </ul>
             <form method="post" action="/set_team" class="d-flex ms-3" style="min-width:180px;">
                 <select name="selected_team" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="" {% if selected_team == '' %}selected{% endif %}>Select Team</option>
                     {% for team in team_list %}
                     <option value="{{ team }}" {% if selected_team == team %}selected{% endif %}>{{ team }}</option>
                     {% endfor %}

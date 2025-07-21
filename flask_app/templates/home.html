@@ -120,7 +120,9 @@
         <div class="card">
             <div class="card-header fw-bold">Team Sentiment Distribution</div>
             <div class="card-body d-flex justify-content-center align-items-center" style="min-height:220px;">
-                <canvas id="sentimentPie" style="max-width:300px;max-height:220px;"></canvas>
+                <div style="width:320px; height:240px; margin:auto;">
+                  <canvas id="sentimentPie" width="300" height="220"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -128,7 +130,9 @@
         <div class="card">
             <div class="card-header fw-bold">Team Negative Sentiment Breakdown</div>
             <div class="card-body">
-                <canvas id="assigneeBar"></canvas>
+                <div style="overflow-x: auto; width: 100%;">
+                  <canvas id="assigneeBar" height="600"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -162,10 +166,15 @@ let sentimentPie = new Chart(pieCtx, {
     },
     options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom' } },
         onClick: function(evt, elements) {
             if (elements && elements.length > 0) {
-                window.location.href = '/engineer';
+                var idx = elements[0].index;
+                // Only redirect for Positive (0) and Negative (2)
+                if (idx === 0 || idx === 2) {
+                    window.location.href = '/engineer';
+                }
             }
         }
     }
@@ -179,12 +188,16 @@ let assigneeBar = new Chart(barCtx, {
         datasets: [{
             label: 'Negative Comments',
             data: [],
-            backgroundColor: '#F44336'
+            backgroundColor: '#F44336',
+            barThickness: 22,
+            categoryPercentage: 1.0,
+            barPercentage: 0.9
         }]
     },
     options: {
         indexAxis: 'y',
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         onClick: function(evt, elements) {
             if (elements && elements.length > 0) {
@@ -193,6 +206,11 @@ let assigneeBar = new Chart(barCtx, {
                 if (member) {
                     window.location.href = '/engineer?member=' + encodeURIComponent(member);
                 }
+            }
+        },
+        scales: {
+            y: {
+                ticks: { autoSkip: false }
             }
         }
     }
@@ -218,8 +236,22 @@ $(document).ready(function() {
             }
         }
         sentimentPie.data.datasets[0].data = pie;
+        // Sort barLabels and barValues from highest to lowest
+        let barData = barLabels.map((label, i) => ({ label, value: barValues[i] }));
+        barData.sort((a, b) => b.value - a.value);
+        barLabels = barData.map(d => d.label);
+        barValues = barData.map(d => d.value);
         assigneeBar.data.labels = barLabels;
         assigneeBar.data.datasets[0].data = barValues;
+        // Dynamically set bar chart height
+        const barCanvas = document.getElementById('assigneeBar');
+        const barCount = barLabels.length;
+        const barHeight = 40; // px per bar
+        const minHeight = 120;
+        const maxHeight = 600;
+        const newHeight = Math.min(maxHeight, Math.max(minHeight, barCount * barHeight));
+        barCanvas.height = newHeight;
+        assigneeBar.resize();
         sentimentPie.update();
         assigneeBar.update();
     } else {

@@ -249,6 +249,13 @@ TEAM_MEMBERS_DICT = {
     'IRIS': ['jayapriya.subramanian', 'vishnupriya.ravichandran'],
     'Cloud': ['sandeep.sriram', 'rajendran.ravichandran']
 }
+# Add 'All' team with all unique members from all teams
+TEAM_MEMBERS_DICT['All'] = sorted({member for members in TEAM_MEMBERS_DICT.values() for member in members})
+
+@app.before_request
+def set_default_team():
+    if 'selected_team' not in session or not session['selected_team']:
+        session['selected_team'] = 'All'
 
 @app.context_processor
 def inject_team_context():
@@ -323,7 +330,7 @@ def home():
         elif gerrit_file and gerrit_file.filename != '':
             flash('Invalid Gerrit file type. Please upload a JSON file.', 'danger')
             return redirect(request.url)
-        selected_team = request.form.get('selected_team', '')
+        selected_team = request.form.get('selected_team', '') or 'All'
         session['selected_team'] = selected_team
     elif 'jira_file' in session:
         filename = session['jira_file']
