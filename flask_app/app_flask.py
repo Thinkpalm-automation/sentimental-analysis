@@ -247,7 +247,8 @@ TEAM_MEMBERS_DICT = {
     'SAP': ['ajeeth.kumar', 'dinesh.selvaraj'],
     'Cloud Infra': ['saiprakash.reddy', 'lakshmanan.kannan'],
     'IRIS': ['jayapriya.subramanian', 'vishnupriya.ravichandran'],
-    'Cloud': ['sandeep.sriram', 'rajendran.ravichandran']
+    'Cloud': ['sandeep.sriram', 'rajendran.ravichandran'],
+    'Eightfold': ['Sabarinathan Balu', 'Kalaivani K', 'dsampath', 'Umamageswari Balaganesan']
 }
 # Add 'All' team with all unique members from all teams
 TEAM_MEMBERS_DICT['All'] = sorted({member for members in TEAM_MEMBERS_DICT.values() for member in members})
@@ -770,6 +771,11 @@ def gerrit():
                                     author = author_obj.get('name', '')
                                 elif isinstance(author_obj, str):
                                     author = author_obj
+                                commit_id = comment.get('commit_id')
+                                change_number = entry.get('change_number')
+                                gerrit_commit_link = ''
+                                if change_number:
+                                    gerrit_commit_link = f'https://gerrit.eng.cohesity.com/c/restricted/+/{change_number}'
                                 gerrit_table.append({
                                     'Patch Set': comment.get('patch_set'),
                                     'Author': author,
@@ -778,7 +784,8 @@ def gerrit():
                                     'Gerrit Sentiment': sentiment,
                                     'Negative keyword observed': neg_keyword,
                                     'Issue Key': issue_key,
-                                    'Assignee': assignee
+                                    'Assignee': assignee,
+                                    'Gerrit Commit Link': gerrit_commit_link
                                 })
                                 gerrit_issue_keys.add(issue_key)
         total_gerrit = len(gerrit_issue_keys)
@@ -788,7 +795,7 @@ def gerrit():
                 return int(x.get('Patch Set') or 0)
             except Exception:
                 return 0
-        gerrit_table.sort(key=lambda x: (x.get('Assignee',''), x.get('Author',''), patch_set_key(x)))
+        gerrit_table.sort(key=lambda x: (x.get('Issue Key',''), patch_set_key(x)))
     except Exception as e:
         flash(f'Error processing Gerrit JSON: {e}', 'danger')
         gerrit_table = []

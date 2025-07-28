@@ -47,24 +47,34 @@
             <table id="gerritTable" class="table table-striped table-bordered small-table">
                 <thead>
                     <tr>
+                        <th>Issue Key</th>
                         <th>Patch Set</th>
                         <th>Author</th>
                         <th>Team Member</th>
                         <th>Line Number</th>
                         <th>Message</th>
                         <th>Sentiment</th>
+                        <th>Gerrit Commit Link</th>
                         <th>Negative Keyword</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in gerrit_table %}
                     <tr class="{% if row['Gerrit Sentiment'] == 'Negative' %}flag-row{% endif %}">
+                        <td>{{ row['Issue Key'] }}</td>
                         <td>{{ row['Patch Set'] }}</td>
                         <td>{{ row['Author'] }}</td>
                         <td>{{ row['Assignee'] }}</td>
                         <td>{{ row['Line Number'] }}</td>
                         <td>{{ row['Message'] }}</td>
                         <td>{{ row['Gerrit Sentiment'] }}</td>
+                        <td>
+                            {% if row['Gerrit Commit Link'] %}
+                                <a href="{{ row['Gerrit Commit Link'] }}" target="_blank">View Commit</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
                         <td>{{ row['Negative keyword observed'] }}</td>
                     </tr>
                     {% endfor %}
@@ -90,8 +100,8 @@ $(document).ready(function() {
     var table = $('#gerritTable').DataTable({
         dom: 'ltip', // Show length menu, table, info, and pagination (no search box)
         "createdRow": function(row, data, dataIndex) {
-            // Sentiment is in column 5 (index 5 after adding Team Member column)
-            if (data[5] && data[5].trim() === 'Negative') {
+            // Sentiment is now in column 6 (index 6)
+            if (data[6] && data[6].trim() === 'Negative') {
                 $('td', row).css({
                     'background-color': '#F44336',
                     'color': '#fff'
@@ -99,20 +109,20 @@ $(document).ready(function() {
             }
         }
     });
-    // Author filter (column 1)
+    // Author filter (column 2)
     $('#author').on('change', function() {
-        var val = $(this).val();
-        table.column(1).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
-    });
-    // Team Member filter (column 2)
-    $('#team_member').on('change', function() {
         var val = $(this).val();
         table.column(2).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
     });
-    // Sentiment filter (column 5)
+    // Team Member filter (column 3)
+    $('#team_member').on('change', function() {
+        var val = $(this).val();
+        table.column(3).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+    });
+    // Sentiment filter (column 6)
     $('#sentiment').on('change', function() {
         var val = $(this).val();
-        table.column(5).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+        table.column(6).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
     });
 });
 </script>

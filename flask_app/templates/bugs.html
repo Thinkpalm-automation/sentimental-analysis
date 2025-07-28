@@ -100,17 +100,17 @@ $(document).ready(function() {
     // Debug: log first row's full data array
     var firstRow = table.row(0).data();
     console.log('First row data array:', firstRow);
-    // Reporter filter (column 1)
+    // Reporter filter (column 2)
     $('#reporter').on('change', function() {
         var val = $(this).val();
         console.log('Reporter filter value:', val);
-        table.column(1).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+        table.column(2).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
     });
-    // Sentiment filter (column 2)
+    // Sentiment filter (column 3)
     $('#sentiment').on('change', function() {
         var val = $(this).val();
         console.log('Sentiment filter value:', val);
-        table.column(2).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
+        table.column(3).search(val ? '^' + val.trim() + '$' : '', true, false).draw();
     });
     // Double-click to show full negative reason in modal
     $(document).on('dblclick', '.neg-reason-cell', function() {
