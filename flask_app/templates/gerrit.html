@@ -13,23 +13,27 @@
         <label for="author" class="form-label">Author</label>
         <select id="author" class="form-select">
             <option value="">All</option>
-            {% for row in gerrit_table|unique(attribute='Author') %}<option value="{{ row['Author'] }}">{{ row['Author'] }}</option>{% endfor %}
+            {% for row in gerrit_table|unique(attribute='Author') %}
+                <option value="{{ row['Author'] }}" {% if row['Author'] == request.args.get('author', '') %}selected{% endif %}>{{ row['Author'] }}</option>
+            {% endfor %}
         </select>
     </div>
     <div class="col-md-3">
         <label for="team_member" class="form-label">Team Member</label>
         <select id="team_member" class="form-select">
             <option value="">All</option>
-            {% for row in gerrit_table|unique(attribute='Assignee') %}<option value="{{ row['Assignee'] }}">{{ row['Assignee'] }}</option>{% endfor %}
+            {% for row in gerrit_table|unique(attribute='Assignee') %}
+                <option value="{{ row['Assignee'] }}" {% if row['Assignee'] == request.args.get('assignee', '') %}selected{% endif %}>{{ row['Assignee'] }}</option>
+            {% endfor %}
         </select>
     </div>
     <div class="col-md-3">
         <label for="sentiment" class="form-label">Sentiment</label>
         <select id="sentiment" class="form-select">
             <option value="">All</option>
-            <option value="Positive">Positive</option>
-            <option value="Neutral">Neutral</option>
-            <option value="Negative">Negative</option>
+            <option value="Positive" {% if request.args.get('sentiment', '') == 'Positive' %}selected{% endif %}>Positive</option>
+            <option value="Neutral" {% if request.args.get('sentiment', '') == 'Neutral' %}selected{% endif %}>Neutral</option>
+            <option value="Negative" {% if request.args.get('sentiment', '') == 'Negative' %}selected{% endif %}>Negative</option>
         </select>
     </div>
 </div>
@@ -84,7 +88,7 @@
 <script>
 $(document).ready(function() {
     var table = $('#gerritTable').DataTable({
-        dom: 't', // Remove default search box
+        dom: 'ltip', // Show length menu, table, info, and pagination (no search box)
         "createdRow": function(row, data, dataIndex) {
             // Sentiment is in column 5 (index 5 after adding Team Member column)
             if (data[5] && data[5].trim() === 'Negative') {

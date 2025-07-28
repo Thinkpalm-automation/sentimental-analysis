@@ -141,7 +141,12 @@
     <button class="btn btn-outline-primary me-2" id="download-csv">Download CSV</button>
     <button class="btn btn-outline-success me-2" id="download-xlsx">Download Excel</button>
     <span class="ms-3">Last updated: {{ last_updated }}</span>
-    <span class="ms-3">&copy; ThinkPalm / Sentiment Analysis Dashboard</span>
+  
+    <!-- Right-aligned model reference on new line -->
+    <div class="text-end mt-2">
+      <small>&copy; ThinkPalm / Sentiment Analysis Dashboard<br>
+      NLP Model <code>cardiffnlp/twitter-roberta-base-sentiment-latest</code></small>
+    </div>
 </div>
 {% endblock %}
 {% block scripts %}

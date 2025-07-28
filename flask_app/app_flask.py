@@ -243,7 +243,7 @@ TEAM_MEMBERS_DICT = {
     'Qual': ['gopal.sampathi', 'araut.thinkpalm', 'yuvaraj.selvam', 'revathi.balachandran'],
     'Yoda': ['rajasekar.appusamy'],
     'Imanis': ['jishnu.jayasree', 'satheesh.ayyappan', 'mathew.joseph', 'prabakaransarangu.s'],
-    'Nexus': ['archana.balaguru', 'ulagammal.essaki', 'muthukaruppan.a', 'jayaprakash.b'],
+    'Nexus': ['archana.balaguru', 'ulagammal.essaki', 'muthukaruppan.a', 'jayaprakash.b', 'andry.precika2'],
     'SAP': ['ajeeth.kumar', 'dinesh.selvaraj'],
     'Cloud Infra': ['saiprakash.reddy', 'lakshmanan.kannan'],
     'IRIS': ['jayapriya.subramanian', 'vishnupriya.ravichandran'],
@@ -782,6 +782,13 @@ def gerrit():
                                 })
                                 gerrit_issue_keys.add(issue_key)
         total_gerrit = len(gerrit_issue_keys)
+        # Sort gerrit_table: by Assignee, then Author, then Patch Set (as int if possible)
+        def patch_set_key(x):
+            try:
+                return int(x.get('Patch Set') or 0)
+            except Exception:
+                return 0
+        gerrit_table.sort(key=lambda x: (x.get('Assignee',''), x.get('Author',''), patch_set_key(x)))
     except Exception as e:
         flash(f'Error processing Gerrit JSON: {e}', 'danger')
         gerrit_table = []

@@ -16,16 +16,18 @@ table tr.flag-row, .table-striped > tbody > tr.flag-row {
         <label for="assignee" class="form-label">Assignee</label>
         <select id="assignee" class="form-select">
             <option value="">All</option>
-            {% for assignee in filters.assignees %}<option value="{{ assignee }}">{{ assignee }}</option>{% endfor %}
+            {% for assignee in filters.assignees %}
+                <option value="{{ assignee }}" {% if assignee == request.args.get('assignee', '') %}selected{% endif %}>{{ assignee }}</option>
+            {% endfor %}
         </select>
     </div>
     <div class="col-md-3">
         <label for="sentiment" class="form-label">Sentiment</label>
         <select id="sentiment" class="form-select">
             <option value="">All</option>
-            <option value="Positive">Positive</option>
-            <option value="Neutral">Neutral</option>
-            <option value="Negative">Negative</option>
+            <option value="Positive" {% if request.args.get('sentiment', '') == 'Positive' %}selected{% endif %}>Positive</option>
+            <option value="Neutral" {% if request.args.get('sentiment', '') == 'Neutral' %}selected{% endif %}>Neutral</option>
+            <option value="Negative" {% if request.args.get('sentiment', '') == 'Negative' %}selected{% endif %}>Negative</option>
         </select>
     </div>
 </div>
