@@ -1118,7 +1118,7 @@ def auto_fetch_data():
         else:
             return jsonify({'success': False, 'error': f'Invalid team: {selected_team}'})
         
-        # Generate JQL query
+        # Generate JQL query for the selected team and weeks duration
         jql_query = generate_jql_for_team(selected_team, team_members, weeks_duration)
         if not jql_query:
             return jsonify({'success': False, 'error': 'No team members found'})
