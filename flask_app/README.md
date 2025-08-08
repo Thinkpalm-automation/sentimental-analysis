@@ -48,9 +48,10 @@ flask_app/
    ```
 2. **Open your browser** and go to [http://localhost:5000](http://localhost:5000)
 3. **Upload your JIRA CSV or Excel file** using the uploader on the Home page.
-4. **(Optional):** Upload a consolidated Gerrit comments JSON file for additional analysis.
+4. **(Optional):** To fetch Gerrit data, check the "Fetch Gerrit Data" box and provide your Gerrit username and password. If left unchecked, only Jira data will be processed.
 5. **Explore:**
    - Use the navigation bar to access Home, Engineer Drilldown, Bugs, Non-Bugs, and Gerrit Analysis pages.
+   - Use the team selection in the navigation bar to filter data by team after loading all data (auto-fetch always fetches all teams).
    - Filter and drill down by team member, sentiment, reporter, or assignee.
    - View KPIs, sentiment distribution, and detailed tables with color-coded highlights.
 
@@ -58,6 +59,8 @@ flask_app/
 - For best results, use JIRA exports with columns: Summary, Issue key, Issue Type, Status, Project key, Priority, Resolution, Assignee, Reporter, Created, Updated, Resolved, Sprint, Custom field (Story Points), Custom field ([CHART] Date of First Response), Comment.
 - The app uses custom keyword lists for bug/non-bug sentiment overrides and supports Gerrit JSON analysis.
 - Table display and filtering is handled by DataTables (JS) for a responsive UI.
+- **Auto-fetch always fetches all teams. Team filtering is done after data is loaded using the navigation bar.**
+- **Gerrit data is optional and controlled by a checkbox. If you want Gerrit analysis, check the box and provide credentials.**
 
 ## License
 This project is provided under the MIT License. 

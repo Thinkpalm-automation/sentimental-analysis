@@ -1,4 +1,7 @@
 Flask
 pandas
 numpy
-openpyxl 
+openpyxl
+requests 
+
+rajesh.thinkpalm@U22-SAC1181-ENG:~/Documents/sentimental-analysis/flask_app$ python3 app_flask.py

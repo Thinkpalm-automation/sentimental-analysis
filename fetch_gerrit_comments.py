@@ -6,6 +6,7 @@ import os
 import argparse
 import time
 import logging
+import glob
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
@@ -110,40 +111,71 @@ def main():
     """
     parser = argparse.ArgumentParser(description='Fetch and consolidate Gerrit comments for JIRA issues.')
     parser.add_argument('--csv', required=True, help='Path to the JIRA CSV file')
-    parser.add_argument('--user', required=True, help='Gerrit username')
-    parser.add_argument('--password', required=True, help='Gerrit password')
+    parser.add_argument('--output', required=True, help='Path to the output JSON file')
+    parser.add_argument('--user', help='Gerrit username (optional for auto mode)')
+    parser.add_argument('--password', help='Gerrit password (optional for auto mode)')
     args = parser.parse_args()
 
-    global AUTH
-    AUTH = (args.user, args.password)
+    # Set up authentication if provided
+    if args.user and args.password:
+        global AUTH
+        AUTH = (args.user, args.password)
+    else:
+        # For auto mode, we'll skip Gerrit processing if no credentials
+        logging.warning("No Gerrit credentials provided. Skipping Gerrit comment processing.")
+        AUTH = None
 
     issue_keys, gerrit_links = extract_issue_keys_and_links(args.csv)
 
     consolidated = []
-    for link in gerrit_links:
-        match = re.search(r'https://gerrit\.eng\.cohesity\.com/c/([^/]+)/\+/(\d+)', link)
-        if match:
-            project, change_number = match.groups()
-            commit_url = convert_to_commit_url(change_number)
-            commit_message = fetch_commit_message(commit_url)
+    
+    # Only process Gerrit links if we have authentication
+    if AUTH and gerrit_links:
+        for link in gerrit_links:
+            match = re.search(r'https://gerrit\.eng\.cohesity\.com/c/([^/]+)/\+/(\d+)', link)
+            if match:
+                project, change_number = match.groups()
+                commit_url = convert_to_commit_url(change_number)
+                commit_message = fetch_commit_message(commit_url)
 
-            addressed_keys = re.findall(r'[A-Z]+-\d+', commit_message)
-            for key in issue_keys:
-                if key in addressed_keys:
-                    comments = download_comments(change_number, project, key)
-                    if comments is not None:
-                        consolidated.append({
-                            'issue_key': key,
-                            'project': project,
-                            'change_number': change_number,
-                            'comments': comments
-                        })
+                addressed_keys = re.findall(r'[A-Z]+-\d+', commit_message)
+                for key in issue_keys:
+                    if key in addressed_keys:
+                        comments = download_comments(change_number, project, key)
+                        if comments is not None:
+                            consolidated.append({
+                                'issue_key': key,
+                                'project': project,
+                                'change_number': change_number,
+                                'comments': comments
+                            })
+    else:
+        # Create empty consolidated structure for auto mode without Gerrit
+        logging.info("Creating empty Gerrit structure for auto mode")
+        for key in issue_keys:
+            consolidated.append({
+                'issue_key': key,
+                'project': '',
+                'change_number': '',
+                'comments': {}
+            })
 
-    # Write consolidated data to a single JSON file
-    output_file = 'consolidated_gerrit_comments.json'
-    with open(output_file, 'w', encoding='utf-8') as f:
+    # Write consolidated data to the specified output file
+    with open(args.output, 'w', encoding='utf-8') as f:
         json.dump(consolidated, f, indent=2)
-    logging.info(f'Consolidated data written to {output_file}')
+    logging.info(f'Consolidated data written to {args.output}')
+
+    # Delete all JSON files in the input CSV directory except the consolidated file
+    target_dir = os.path.dirname(os.path.abspath(args.csv))
+    consolidated_path = os.path.abspath(args.output)
+    for fname in glob.glob(os.path.join(target_dir, '*.json')):
+        if os.path.abspath(fname) == consolidated_path:
+            continue
+        try:
+            os.remove(fname)
+            logging.info(f"Deleted intermediate file: {fname}")
+        except Exception as e:
+            logging.warning(f"Could not delete {fname}: {e}")
 
 if __name__ == '__main__':
     main()

@@ -18,36 +18,178 @@
     .card-navbar-blue { background-color: #003366 !important; color: #fff !important; }
     .flag-row { background: #fff3cd !important; }
     .footer { margin-top: 2rem; padding: 1rem 0; text-align: center; color: #888; }
+    .mode-section { margin-bottom: 2rem; }
+    .auto-options { display: none; }
+    .manual-options { display: none; }
+    .progress-section { display: none; }
+    .error-dialog { display: none; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="my-4">
-    <h4 class="text-success">Upload your JIRA export to get started</h4>
-    <div class="alert alert-info" role="alert">
-        <strong>Instructions:</strong> Please upload your <b>JIRA CSV or Excel file</b>.<br>
-        For Gerrit analysis, also upload your <b>Consolidated Gerrit Comments JSON</b> at the same time.<br>
-        <span class="text-danger">Gerrit analysis will only be available if both files are uploaded together.</span>
+    <h4 class="text-success">Select Data Source Mode</h4>
+    
+    <!-- Data Status Indicator -->
+    <div class="data-status mb-3" id="dataStatus">
+        {% if session.get('jira_file') %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle"></i> 
+                <strong>Data Loaded:</strong> 
+                Jira file: {{ session.get('jira_file') }}
+                {% if session.get('gerrit_file') %}
+                    | Gerrit file: {{ session.get('gerrit_file') }}
+                {% endif %}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% else %}
+            <div class="alert alert-info" role="alert">
+                <i class="fas fa-info-circle"></i> 
+                <strong>No Data Loaded:</strong> Please upload files or fetch data from Jira to begin analysis.
+            </div>
+        {% endif %}
     </div>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    <form method="post" enctype="multipart/form-data" id="upload-form">
-        <label for="jira_file" class="form-label">JIRA CSV or Excel file</label>
-        <input type="file" name="jira_file" class="form-control mb-2" required>
-        <label for="gerrit_file" class="form-label">Consolidated Gerrit Comments (JSON, optional)</label>
-        <input type="file" name="gerrit_file" class="form-control mb-2">
-        <button type="submit" class="btn" style="background:#1565c0; color:#fff;">Upload</button>
-    </form>
+    
+    <!-- Mode Selection -->
+    <div class="mode-section">
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="dataMode" id="manualMode" value="manual" checked>
+            <label class="form-check-label" for="manualMode">
+                <strong>Manual Mode</strong> - Upload files manually
+            </label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="dataMode" id="autoMode" value="auto">
+            <label class="form-check-label" for="autoMode">
+                <strong>Auto Mode</strong> - Fetch data from Jira automatically
+            </label>
+        </div>
+        <div class="mt-2">
+            <button type="button" class="btn btn-outline-danger btn-sm" id="clearDataBtn" {% if not session.get('jira_file') %}style="display: none;"{% endif %}>
+                <i class="fas fa-trash"></i> Clear Existing Data
+            </button>
+        </div>
+    </div>
+
+    <!-- Manual Mode Options -->
+    <div class="manual-options" id="manualOptions">
+        <div class="alert alert-info" role="alert">
+            <strong>Instructions:</strong> Please upload your <b>JIRA CSV or Excel file</b>.<br>
+            For Gerrit analysis, also upload your <b>Consolidated Gerrit Comments JSON</b> at the same time.<br>
+            <span class="text-danger">Gerrit analysis will only be available if both files are uploaded together.</span>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data" id="upload-form">
+            <input type="hidden" name="mode" value="manual">
+            <label for="jira_file" class="form-label">JIRA CSV or Excel file</label>
+            <input type="file" name="jira_file" class="form-control mb-2" required>
+            <label for="gerrit_file" class="form-label">Consolidated Gerrit Comments (JSON, optional)</label>
+            <input type="file" name="gerrit_file" class="form-control mb-2">
+            <button type="submit" class="btn" style="background:#1565c0; color:#fff;">Upload</button>
+        </form>
+    </div>
+
+    <!-- Auto Mode Options -->
+    <div class="auto-options" id="autoOptions">
+        <div class="alert alert-info" role="alert">
+            <strong>Auto Mode:</strong> Data will be fetched automatically from Jira and processed.<br>
+            <span class="text-info">This will fetch team details, generate JQL queries, download CSV, and process Gerrit comments automatically.</span>
+        </div>
+        <form method="post" id="auto-form">
+            <input type="hidden" name="mode" value="auto">
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="jira_url" class="form-label">Jira Server URL</label>
+                    <input type="text" name="jira_url" id="jira_url" class="form-control mb-2" value="https://jira.cohesity.com/" readonly>
+                </div>
+                <div class="col-md-6">
+                    <label for="jira_username" class="form-label">Jira Username/Email</label>
+                    <input type="text" name="jira_username" id="jira_username" class="form-control mb-2" value="" placeholder="Enter your Jira username or email">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="jira_token" class="form-label">Jira API Token (PAT)</label>
+                    <input type="password" name="jira_token" id="jira_token" class="form-control mb-2" value="" placeholder="Enter your Personal Access Token">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="weeks_duration" class="form-label">Number of Weeks</label>
+                    <input type="number" name="weeks_duration" id="weeks_duration" class="form-control mb-2" value="4" min="1" max="52" placeholder="Enter number of weeks">
+                </div>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="fetchGerrit" name="fetch_gerrit">
+              <label class="form-check-label" for="fetchGerrit">
+                Fetch Gerrit Data (requires credentials)
+              </label>
+            </div>
+            <div id="gerritCredentials" style="display:none;">
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="gerrit_username" class="form-label">Gerrit Username</label>
+                  <input type="text" name="gerrit_username" id="gerrit_username" class="form-control mb-2">
+                </div>
+                <div class="col-md-6">
+                  <label for="gerrit_password" class="form-label">Gerrit Password</label>
+                  <input type="password" name="gerrit_password" id="gerrit_password" class="form-control mb-2">
+                </div>
+              </div>
+            </div>
+            <div class="alert alert-info" role="alert">
+                <small><i class="fas fa-info-circle"></i> <strong>Gerrit Credentials:</strong> If provided, the system will fetch actual Gerrit comments for sentiment analysis. If left empty, Gerrit data will be skipped but Jira data will still be processed.</small>
+            </div>
+            <button type="submit" class="btn btn-success" id="fetchDataBtn">
+                <i class="fas fa-download"></i> Fetch Data from Jira
+            </button>
+        </form>
+    </div>
+
+    <!-- Progress Section -->
+    <div class="progress-section" id="progressSection">
+        <div class="card">
+            <div class="card-header">
+                <h5>Fetching Data from Jira</h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="progressBar"></div>
+                </div>
+                <div id="progressText">Initializing...</div>
+                <div id="progressDetails" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Dialog -->
+    <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="errorModalLabel">Error</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="errorModalBody">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
 {% if kpis.total_comments > 0 %}
-<div class="row mb-3">
+<div class="row mb-3 data-section" {% if not session.get('jira_file') %}style="display: none;"{% endif %}>
     <div class="col-md-12">
         <div class="alert alert-secondary text-center">
             <strong>Total Entries in CSV:</strong> {{ kpis.total_comments }}
@@ -55,7 +197,7 @@
     </div>
 </div>
 {% endif %}
-<div class="mb-4">
+<div class="mb-4 data-section" {% if not session.get('jira_file') %}style="display: none;"{% endif %}>
     <h1 class="fw-bold text-accent mb-3">Team Sentiment Analysis</h1>
     {% if not selected_team %}
     <div class="alert alert-warning text-center mt-3">
@@ -115,7 +257,7 @@
         </div>
     </div>
 </div>
-<div class="row mb-4 g-3">
+<div class="row mb-4 g-3 data-section" {% if not session.get('jira_file') %}style="display: none;"{% endif %}>
     <div class="col-md-6">
         <div class="card">
             <div class="card-header fw-bold">Team Sentiment Distribution</div>
@@ -137,7 +279,7 @@
         </div>
     </div>
 </div>
-<div class="footer">
+<div class="footer data-section" {% if not session.get('jira_file') %}style="display: none;"{% endif %}>
     <button class="btn btn-outline-primary me-2" id="download-csv">Download CSV</button>
     <button class="btn btn-outline-success me-2" id="download-xlsx">Download Excel</button>
     <span class="ms-3">Last updated: {{ last_updated }}</span>
@@ -274,5 +416,207 @@ $(document).ready(function() {
 // Download buttons (CSV/XLSX)
 document.getElementById('download-csv').onclick = function() { window.location = '/download/csv'; };
 document.getElementById('download-xlsx').onclick = function() { window.location = '/download/xlsx'; };
+
+// Radio button behavior for Manual vs Auto mode
+$(document).ready(function() {
+    // Check if we should restore auto mode from session storage
+    const savedMode = sessionStorage.getItem('selectedMode');
+    if (savedMode === 'auto') {
+        // Restore auto mode
+        $('#autoMode').prop('checked', true);
+        $('#manualOptions').hide();
+        $('#autoOptions').show();
+        $('#progressSection').hide();
+        // Clear the saved mode
+        sessionStorage.removeItem('selectedMode');
+    } else {
+        // Show manual options by default
+        $('#manualOptions').show();
+        $('#autoOptions').hide();
+    }
+    
+    // Handle radio button changes
+    $('input[name="dataMode"]').change(function() {
+        const selectedMode = $(this).val();
+        const previousMode = $(this).data('previous-mode');
+        
+        // Clear data when switching modes
+        if (previousMode && previousMode !== selectedMode) {
+            if (confirm('Switching modes will clear existing data. Are you sure?')) {
+                clearExistingData();
+            } else {
+                // Revert the radio button selection
+                if (previousMode === 'manual') {
+                    $('#manualMode').prop('checked', true);
+                } else {
+                    $('#autoMode').prop('checked', true);
+                }
+                return;
+            }
+        }
+        
+        // Store current mode for next comparison
+        $(this).data('previous-mode', selectedMode);
+        
+        if (selectedMode === 'manual') {
+            $('#manualOptions').show();
+            $('#autoOptions').hide();
+            $('#progressSection').hide();
+        } else if (selectedMode === 'auto') {
+            $('#manualOptions').hide();
+            $('#autoOptions').show();
+            $('#progressSection').hide();
+        }
+    });
+    
+    // Handle clear data button
+    $('#clearDataBtn').click(function() {
+        if (confirm('Are you sure you want to clear all existing data? This action cannot be undone.')) {
+            clearExistingData();
+        }
+    });
+    
+    // Function to clear existing data
+    function clearExistingData() {
+        // Show loading state
+        $('#clearDataBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
+        
+        // Make AJAX call to clear data
+        $.ajax({
+            url: '/clear_data',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    // Update data status to show no data
+                    $('#dataStatus').html(`
+                        <div class="alert alert-info" role="alert">
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>No Data Loaded:</strong> Please upload files or fetch data from Jira to begin analysis.
+                        </div>
+                    `);
+                    
+                    // Hide any existing data sections
+                    $('.data-section').hide();
+                    
+                    // Hide clear data button
+                    $('#clearDataBtn').hide();
+                    
+                    // Reset button state
+                    $('#clearDataBtn').prop('disabled', false).html('<i class="fas fa-trash"></i> Clear Existing Data');
+                    
+                    // Show success message
+                    $('<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                      '<i class="fas fa-check-circle"></i> Data cleared successfully!' +
+                      '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                      '</div>').insertAfter('#dataStatus').delay(3000).fadeOut();
+                    
+                } else {
+                    alert('Error clearing data: ' + (response.error || 'Unknown error'));
+                    $('#clearDataBtn').prop('disabled', false).html('<i class="fas fa-trash"></i> Clear Existing Data');
+                }
+            },
+            error: function() {
+                alert('Error clearing data. Please try again.');
+                $('#clearDataBtn').prop('disabled', false).html('<i class="fas fa-trash"></i> Clear Existing Data');
+            }
+        });
+    }
+    
+    // Handle auto form submission
+    $('#auto-form').submit(function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        // Show progress section
+        $('#progressSection').show();
+        $('#autoOptions').hide();
+        
+        // Update progress
+        updateProgress(0, 'Initializing...');
+        
+        // Submit form via AJAX
+        $.ajax({
+            url: '/auto_fetch_data',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            xhr: function() {
+                const xhr = new window.XMLHttpRequest();
+                xhr.addEventListener('progress', function(evt) {
+                    if (evt.lengthComputable) {
+                        const percentComplete = evt.loaded / evt.total * 100;
+                        updateProgress(percentComplete, 'Downloading data...');
+                    }
+                }, false);
+                return xhr;
+            },
+            success: function(response) {
+                if (response.success) {
+                    updateProgress(100, 'Data fetched successfully!');
+                    // Store auto mode in session storage before reload
+                    sessionStorage.setItem('selectedMode', 'auto');
+                    // Show success message
+                    $('#progressText').html('Data fetched successfully! <br><small class="text-success">Redirecting to auto mode...</small>');
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    showError(response.error || 'An error occurred while fetching data.');
+                }
+            },
+            error: function(xhr, status, error) {
+                showError('Failed to fetch data: ' + error);
+            }
+        });
+    });
+});
+
+$(document).ready(function() {
+  $('#fetchGerrit').change(function() {
+    if (this.checked) {
+      $('#gerritCredentials').show();
+      $('#gerrit_username, #gerrit_password').attr('required', true);
+    } else {
+      $('#gerritCredentials').hide();
+      $('#gerrit_username, #gerrit_password').removeAttr('required').val('');
+    }
+  });
+  // Ensure correct state on page load (e.g., after reload)
+  if ($('#fetchGerrit').is(':checked')) {
+    $('#gerritCredentials').show();
+    $('#gerrit_username, #gerrit_password').attr('required', true);
+  } else {
+    $('#gerritCredentials').hide();
+    $('#gerrit_username, #gerrit_password').removeAttr('required').val('');
+  }
+});
+
+function updateProgress(percent, text) {
+    $('#progressBar').css('width', percent + '%');
+    $('#progressText').text(text);
+}
+
+function showError(message) {
+    $('#errorModalBody').text(message);
+    $('#errorModal').modal('show');
+    $('#progressSection').hide();
+    $('#autoOptions').show();
+}
+
+// Progress simulation for demo
+function simulateProgress() {
+    let progress = 0;
+    const interval = setInterval(function() {
+        progress += 10;
+        updateProgress(progress, 'Processing step ' + (progress/10) + '/10...');
+        
+        if (progress >= 100) {
+            clearInterval(interval);
+            updateProgress(100, 'Completed!');
+        }
+    }, 500);
+}
 </script>
 {% endblock %} 

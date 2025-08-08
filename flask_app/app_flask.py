@@ -1,8 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
 import numpy as np
+import json
+import requests
+from datetime import datetime, timedelta
+import subprocess
+import tempfile
+import logging
 
 # --- Sentiment Analysis Keyword Lists and Functions (from app.py) ---
 BUG_NEGATIVE_KEYWORDS = [
@@ -299,40 +305,48 @@ def home():
     total_nonbugs = 0
     total_gerrit = 0
     if request.method == 'POST':
-        # JIRA file (required)
-        if 'jira_file' not in request.files or request.files['jira_file'].filename == '':
-            flash('Please upload a JIRA CSV or Excel file.', 'danger')
-            return redirect(request.url)
-        file = request.files['jira_file']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            session['jira_file'] = filename
-            try:
-                if filename.lower().endswith('.csv'):
-                    df = pd.read_csv(filepath)
-                else:
-                    df = pd.read_excel(filepath)
-                processed_df = process_data(df)
-            except Exception as e:
-                flash(f'Error processing JIRA file: {e}', 'danger')
+        mode = request.form.get('mode', 'manual')
+        
+        if mode == 'manual':
+            # Manual mode - handle file uploads
+            # JIRA file (required)
+            if 'jira_file' not in request.files or request.files['jira_file'].filename == '':
+                flash('Please upload a JIRA CSV or Excel file.', 'danger')
                 return redirect(request.url)
-        else:
-            flash('Invalid JIRA file type. Please upload a CSV or Excel file.', 'danger')
-            return redirect(request.url)
-        # Gerrit file (optional)
-        gerrit_file = request.files.get('gerrit_file')
-        if gerrit_file and gerrit_file.filename != '' and gerrit_file.filename.lower().endswith('.json'):
-            gerrit_filename = secure_filename(gerrit_file.filename)
-            gerrit_filepath = os.path.join(app.config['UPLOAD_FOLDER'], gerrit_filename)
-            gerrit_file.save(gerrit_filepath)
-            session['gerrit_file'] = gerrit_filename
-        elif gerrit_file and gerrit_file.filename != '':
-            flash('Invalid Gerrit file type. Please upload a JSON file.', 'danger')
-            return redirect(request.url)
-        selected_team = request.form.get('selected_team', '') or 'All'
-        session['selected_team'] = selected_team
+            file = request.files['jira_file']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+                session['jira_file'] = filename
+                try:
+                    if filename.lower().endswith('.csv'):
+                        df = pd.read_csv(filepath)
+                    else:
+                        df = pd.read_excel(filepath)
+                    processed_df = process_data(df)
+                except Exception as e:
+                    flash(f'Error processing JIRA file: {e}', 'danger')
+                    return redirect(request.url)
+            else:
+                flash('Invalid JIRA file type. Please upload a CSV or Excel file.', 'danger')
+                return redirect(request.url)
+            # Gerrit file (optional)
+            gerrit_file = request.files.get('gerrit_file')
+            if gerrit_file and gerrit_file.filename != '' and gerrit_file.filename.lower().endswith('.json'):
+                gerrit_filename = secure_filename(gerrit_file.filename)
+                gerrit_filepath = os.path.join(app.config['UPLOAD_FOLDER'], gerrit_filename)
+                gerrit_file.save(gerrit_filepath)
+                session['gerrit_file'] = gerrit_filename
+            elif gerrit_file and gerrit_file.filename != '':
+                flash('Invalid Gerrit file type. Please upload a JSON file.', 'danger')
+                return redirect(request.url)
+            selected_team = request.form.get('selected_team', '') or 'All'
+            session['selected_team'] = selected_team
+        elif mode == 'auto':
+            # Auto mode - data should already be fetched via AJAX
+            # This will be handled by the auto_fetch_data route
+            pass
     elif 'jira_file' in session:
         filename = session['jira_file']
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -370,9 +384,9 @@ def home():
         if selected_team in TEAM_MEMBERS_DICT:
             team_members = TEAM_MEMBERS_DICT[selected_team]
             bug_mask = (processed_df['Issue Type'].str.lower().str.strip() == 'bug')
-            is_team_reporter = processed_df['Reporter'].isin(team_members)
+            is_team_reporter = processed_df['Reporter'].apply(lambda x: is_team_member(x, team_members))
             nonbug_mask = (processed_df['Issue Type'].str.lower().str.strip() != 'bug')
-            is_team_assignee = processed_df['Assignee'].isin(team_members)
+            is_team_assignee = processed_df['Assignee'].apply(lambda x: is_team_member(x, team_members))
             filtered_df = pd.concat([
                 processed_df[bug_mask & is_team_reporter],
                 processed_df[nonbug_mask & is_team_assignee]
@@ -399,26 +413,39 @@ def home():
         # --- Team Sentiment Aggregation ---
         # Only include core team members for the selected team
         if selected_team in TEAM_MEMBERS_DICT:
-            assignees = [a for a in TEAM_MEMBERS_DICT[selected_team] if a in processed_df['Assignee'].dropna().unique().tolist()]
+            team_members = TEAM_MEMBERS_DICT[selected_team]
+            # Get assignees that match team members
+            available_assignees = processed_df['Assignee'].dropna().unique().tolist()
+            assignees = [a for a in available_assignees if is_team_member(a, team_members)]
         else:
             assignees = []
         issue_key_to_assignee = dict(zip(processed_df['Issue key'], processed_df['Assignee']))
         for assignee in assignees:
-            team_sentiment[assignee] = {"Positive": 0, "Neutral": 0, "Negative": 0}
+            # Use normalized name as key for consistency
+            normalized_name = normalize_name(assignee)
+            team_sentiment[normalized_name] = {"Positive": 0, "Neutral": 0, "Negative": 0}
             # Bugs (by Reporter, to match engineer drilldown)
-            bug_rows = processed_df[(processed_df['Reporter'] == assignee) & (processed_df['Issue Type'].str.lower() == 'bug')]
+            bug_rows = processed_df[(processed_df['Reporter'].apply(lambda x: is_team_member(x, [normalized_name]))) & (processed_df['Issue Type'].str.lower() == 'bug')]
             for sentiment in ["Positive", "Neutral", "Negative"]:
-                team_sentiment[assignee][sentiment] += (bug_rows['Customer Sentiment'] == sentiment).sum()
+                team_sentiment[normalized_name][sentiment] += (bug_rows['Customer Sentiment'] == sentiment).sum()
             # Non-bugs (by Assignee)
-            nonbug_rows = processed_df[(processed_df['Assignee'] == assignee) & (processed_df['Issue Type'].str.lower() != 'bug')]
+            nonbug_rows = processed_df[(processed_df['Assignee'].apply(lambda x: is_team_member(x, [normalized_name]))) & (processed_df['Issue Type'].str.lower() != 'bug')]
             for sentiment in ["Positive", "Neutral", "Negative"]:
-                team_sentiment[assignee][sentiment] += (nonbug_rows['Customer Sentiment'] == sentiment).sum()
+                team_sentiment[normalized_name][sentiment] += (nonbug_rows['Customer Sentiment'] == sentiment).sum()
         # 2. Gerrit comments (if available)
         if gerrit_data:
             for entry in gerrit_data:
                 issue_key = entry.get('issue_key')
                 assignee = issue_key_to_assignee.get(issue_key)
-                if not assignee or assignee not in TEAM_MEMBERS_DICT.get(selected_team, []):
+                if not assignee or not is_team_member(assignee, TEAM_MEMBERS_DICT.get(selected_team, [])):
+                    continue
+                # Find the matching normalized name for this assignee
+                matching_normalized = None
+                for normalized_name in team_sentiment.keys():
+                    if is_team_member(assignee, [normalized_name]):
+                        matching_normalized = normalized_name
+                        break
+                if not matching_normalized:
                     continue
                 comments = entry.get('comments', {})
                 if isinstance(comments, dict):
@@ -429,8 +456,8 @@ def home():
                                     msg = comment.get('message')
                                     # Count for assignee regardless of author
                                     sentiment, _, _ = get_gerrit_sentiment(msg)
-                                    if sentiment in team_sentiment[assignee]:
-                                        team_sentiment[assignee][sentiment] += 1
+                                    if sentiment in team_sentiment[matching_normalized]:
+                                        team_sentiment[matching_normalized][sentiment] += 1
         # --- Overall sentiment sum for chart ---
         for assignee, counts in team_sentiment.items():
             for sentiment in ["Positive", "Neutral", "Negative"]:
@@ -476,11 +503,11 @@ def home():
             team_members = TEAM_MEMBERS_DICT[selected_team]
             # Total bugs: Reporter is a team member
             bug_mask = processed_df['Issue Type'].str.lower().str.strip() == 'bug'
-            is_team_reporter = processed_df['Reporter'].isin(team_members)
+            is_team_reporter = processed_df['Reporter'].apply(lambda x: is_team_member(x, team_members))
             total_bugs = processed_df[bug_mask & is_team_reporter].shape[0]
             # Total non-bugs: Assignee is a team member
             nonbug_mask = processed_df['Issue Type'].str.lower().str.strip() != 'bug'
-            is_team_assignee = processed_df['Assignee'].isin(team_members)
+            is_team_assignee = processed_df['Assignee'].apply(lambda x: is_team_member(x, team_members))
             total_nonbugs = processed_df[nonbug_mask & is_team_assignee].shape[0]
             # Gerrit matching (as before)
             valid_rows = processed_df[is_team_assignee]
@@ -523,6 +550,44 @@ def set_team():
     referrer = request.headers.get('Referer')
     return redirect(referrer or url_for('home'))
 
+@app.route('/clear_data', methods=['POST'])
+def clear_data():
+    """
+    Clear existing data from session and optionally remove uploaded files
+    """
+    try:
+        # Clear session data
+        if 'jira_file' in session:
+            # Optionally remove the uploaded file
+            try:
+                jira_filepath = os.path.join(app.config['UPLOAD_FOLDER'], session['jira_file'])
+                if os.path.exists(jira_filepath):
+                    os.remove(jira_filepath)
+            except Exception as e:
+                print(f"Warning: Could not remove Jira file: {e}")
+            del session['jira_file']
+        
+        if 'gerrit_file' in session:
+            # Optionally remove the uploaded file
+            try:
+                gerrit_filepath = os.path.join(app.config['UPLOAD_FOLDER'], session['gerrit_file'])
+                if os.path.exists(gerrit_filepath):
+                    os.remove(gerrit_filepath)
+            except Exception as e:
+                print(f"Warning: Could not remove Gerrit file: {e}")
+            del session['gerrit_file']
+        
+        # Clear any other session data related to data processing
+        session_keys_to_clear = ['selected_team']
+        for key in session_keys_to_clear:
+            if key in session:
+                del session[key]
+        
+        return jsonify({'success': True, 'message': 'Data cleared successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Placeholder routes for multi-page dashboard
 @app.route('/engineer')
 def engineer():
@@ -542,17 +607,20 @@ def engineer():
             processed_df = process_data(df)
             # Use only TEAM_MEMBERS for selected team
             if selected_team in TEAM_MEMBERS_DICT:
-                team_members = [m for m in TEAM_MEMBERS_DICT[selected_team] if m in processed_df['Assignee'].dropna().unique().tolist()]
+                team_members = TEAM_MEMBERS_DICT[selected_team]
+                # Filter to only include members that appear in the data
+                available_assignees = processed_df['Assignee'].dropna().unique().tolist()
+                team_members = [m for m in team_members if any(is_team_member(assignee, [m]) for assignee in available_assignees)]
             else:
                 team_members = []
             filters["members"] = team_members
             selected_member = request.args.get('member', 'All')
             # Bugs (filter by Reporter for team membership)
             bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug')] if 'Issue Type' in processed_df else processed_df
-            bug_df = bug_df[bug_df['Reporter'].isin(team_members)] if 'Reporter' in bug_df else bug_df
+            bug_df = bug_df[bug_df['Reporter'].apply(lambda x: is_team_member(x, team_members))] if 'Reporter' in bug_df else bug_df
             # Non-bugs (filter by Assignee)
             nonbug_df = processed_df[(processed_df['Issue Type'].str.lower() != 'bug')] if 'Issue Type' in processed_df else processed_df
-            nonbug_df = nonbug_df[nonbug_df['Assignee'].isin(team_members)] if 'Assignee' in nonbug_df else nonbug_df
+            nonbug_df = nonbug_df[nonbug_df['Assignee'].apply(lambda x: is_team_member(x, team_members))] if 'Assignee' in nonbug_df else nonbug_df
             # Gerrit
             gerrit_counts = {m: {"Positive": 0, "Neutral": 0, "Negative": 0} for m in team_members}
             if 'gerrit_file' in session:
@@ -565,7 +633,15 @@ def engineer():
                 for entry in gerrit_data:
                     issue_key = entry.get('issue_key')
                     assignee = issue_key_to_assignee.get(issue_key)
-                    if not assignee or assignee not in team_members:
+                    if not assignee or not is_team_member(assignee, team_members):
+                        continue
+                    # Find the matching team member for this assignee
+                    matching_member = None
+                    for member in team_members:
+                        if is_team_member(assignee, [member]):
+                            matching_member = member
+                            break
+                    if not matching_member:
                         continue
                     comments = entry.get('comments', {})
                     if isinstance(comments, dict):
@@ -575,14 +651,15 @@ def engineer():
                                     if isinstance(comment, dict):
                                         msg = comment.get('message')
                                         sentiment, _, _ = get_gerrit_sentiment(msg)
-                                        if sentiment in gerrit_counts[assignee]:
-                                            gerrit_counts[assignee][sentiment] += 1
+                                        if sentiment in gerrit_counts[matching_member]:
+                                            gerrit_counts[matching_member][sentiment] += 1
             for member in team_members:
                 if selected_member != 'All' and member != selected_member:
                     continue
-                bugs = bug_df[bug_df['Reporter'] == member] if 'Reporter' in bug_df else pd.DataFrame()
+                # Use the normalized name for filtering
+                bugs = bug_df[bug_df['Reporter'].apply(lambda x: is_team_member(x, [member]))] if 'Reporter' in bug_df else pd.DataFrame()
                 bug_counts = bugs['Customer Sentiment'].value_counts().to_dict() if not bugs.empty else {}
-                nonbugs = nonbug_df[nonbug_df['Assignee'] == member] if 'Assignee' in nonbug_df else pd.DataFrame()
+                nonbugs = nonbug_df[nonbug_df['Assignee'].apply(lambda x: is_team_member(x, [member]))] if 'Assignee' in nonbug_df else pd.DataFrame()
                 nonbug_counts = nonbugs['Customer Sentiment'].value_counts().to_dict() if not nonbugs.empty else {}
                 gerrit = gerrit_counts.get(member, {})
                 summary.append({
@@ -624,8 +701,9 @@ def bugs():
             # Filter for bug issues where Reporter is a team member of selected team
             bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug')] if 'Issue Type' in processed_df else processed_df
             if selected_team in TEAM_MEMBERS_DICT:
-                bug_df = bug_df[bug_df['Reporter'].isin(TEAM_MEMBERS_DICT[selected_team])] if 'Reporter' in bug_df else bug_df
-                filters["reporters"] = [r for r in TEAM_MEMBERS_DICT[selected_team] if r in bug_df['Reporter'].dropna().unique().tolist()] if 'Reporter' in bug_df else []
+                team_members = TEAM_MEMBERS_DICT[selected_team]
+                bug_df = bug_df[bug_df['Reporter'].apply(lambda x: is_team_member(x, team_members))] if 'Reporter' in bug_df else bug_df
+                filters["reporters"] = [r for r in team_members if any(is_team_member(reporter, [r]) for reporter in bug_df['Reporter'].dropna().unique().tolist())] if 'Reporter' in bug_df else []
             else:
                 bug_df = bug_df.iloc[0:0]  # Empty
                 filters["reporters"] = []
@@ -677,8 +755,9 @@ def nonbugs():
             nonbug_df = processed_df[processed_df['Issue Type'].str.lower() != 'bug'] if 'Issue Type' in processed_df else processed_df
             nonbug_df = nonbug_df.fillna('')
             if selected_team in TEAM_MEMBERS_DICT:
-                nonbug_df = nonbug_df[nonbug_df['Assignee'].isin(TEAM_MEMBERS_DICT[selected_team])] if 'Assignee' in nonbug_df else nonbug_df
-                filters["assignees"] = sorted([a for a in TEAM_MEMBERS_DICT[selected_team] if a in nonbug_df['Assignee'].dropna().unique().tolist()]) if 'Assignee' in nonbug_df else []
+                team_members = TEAM_MEMBERS_DICT[selected_team]
+                nonbug_df = nonbug_df[nonbug_df['Assignee'].apply(lambda x: is_team_member(x, team_members))] if 'Assignee' in nonbug_df else nonbug_df
+                filters["assignees"] = sorted([a for a in team_members if any(is_team_member(assignee, [a]) for assignee in nonbug_df['Assignee'].dropna().unique().tolist())]) if 'Assignee' in nonbug_df else []
             else:
                 nonbug_df = nonbug_df.iloc[0:0]
                 filters["assignees"] = []
@@ -726,7 +805,7 @@ def gerrit():
         processed_df = process_data(df)
         if selected_team in TEAM_MEMBERS_DICT:
             team_members = TEAM_MEMBERS_DICT[selected_team]
-            valid_rows = processed_df[processed_df['Assignee'].isin(team_members)]
+            valid_rows = processed_df[processed_df['Assignee'].apply(lambda x: is_team_member(x, team_members))]
             valid_issue_keys = set(valid_rows['Issue key'].dropna().unique())
             issue_key_to_assignee = dict(zip(valid_rows['Issue key'], valid_rows['Assignee']))
         else:
@@ -750,12 +829,13 @@ def gerrit():
         for entry in gerrit_data:
             issue_key = entry.get('issue_key')
             assignee = issue_key_to_assignee.get(issue_key)
-            if not assignee or assignee not in TEAM_MEMBERS_DICT.get(selected_team, []):
+            if not assignee or not is_team_member(assignee, TEAM_MEMBERS_DICT.get(selected_team, [])):
                 continue
-            if assignee_filter and assignee != assignee_filter:
+            if assignee_filter and not is_team_member(assignee, [assignee_filter]):
                 continue
             comments = entry.get('comments', {})
-            if isinstance(comments, dict):
+            print(f"[GERRIT DEBUG] Issue: {issue_key}, Assignee: {assignee}, Comments empty: {not comments}")
+            if isinstance(comments, dict) and comments:  # Only process if comments exist and are not empty
                 for comment_list in comments.values():
                     if isinstance(comment_list, list):
                         for comment in comment_list:
@@ -789,6 +869,7 @@ def gerrit():
                                 })
                                 gerrit_issue_keys.add(issue_key)
         total_gerrit = len(gerrit_issue_keys)
+        print(f"[GERRIT DEBUG] Total entries processed: {len(gerrit_data)}, Total with comments: {len(gerrit_issue_keys)}, Table rows: {len(gerrit_table)}")
         # Sort gerrit_table: by Assignee, then Author, then Patch Set (as int if possible)
         def patch_set_key(x):
             try:
@@ -800,6 +881,319 @@ def gerrit():
         flash(f'Error processing Gerrit JSON: {e}', 'danger')
         gerrit_table = []
     return render_template('gerrit.html', gerrit_table=gerrit_table, missing_files=missing_files, total_bugs=total_bugs, total_nonbugs=total_nonbugs, total_gerrit=total_gerrit)
+
+# Add Jira integration imports and functions
+def get_jira_issues_with_all_fields(jira_url, username, api_token, jql_query):
+    """
+    Fetch issues from Jira using REST API with all available fields
+    """
+    headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {api_token}'
+    }
+    
+    # Jira REST API endpoint for search
+    search_url = f"{jira_url.rstrip('/')}/rest/api/2/search"
+    
+    payload = {
+        "jql": jql_query,
+        "maxResults": 1000,
+        "fields": [
+            "key", "summary", "status", "assignee", "reporter", 
+            "issuetype", "created", "updated", "comment", "project",
+            "priority", "resolution", "resolutiondate", "description",
+            "components", "labels", "fixVersions", "versions",
+            "customfield_10016", "customfield_10000", "customfield_10001",
+            "customfield_10002", "customfield_10003", "customfield_10004",
+            "customfield_10005", "customfield_10006", "customfield_10007",
+            "customfield_10008", "customfield_10009", "customfield_10010",
+            "customfield_10011", "customfield_10012", "customfield_10013",
+            "customfield_10014", "customfield_10015", "customfield_10017",
+            "customfield_10018", "customfield_10019", "customfield_10020"
+        ],
+        "expand": ["changelog", "comments"]  # Include comments and changelog
+    }
+    
+    try:
+        response = requests.post(
+            search_url,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Jira API error: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        raise Exception(f"Failed to fetch from Jira: {str(e)}")
+
+def generate_jql_for_team(team_name, team_members, weeks_duration=4):
+    """
+    Generate JQL query for a specific team
+    Format: ((issue_type=bug AND reporter IN (team_members)) OR (issue_type != bug AND assignee IN (team_members)))
+    Only fetch issues from the past 6 weeks.
+    """
+    if team_name == "All":
+        # For all teams, include all team members
+        all_members = []
+        for members in TEAM_MEMBERS_DICT.values():
+            if isinstance(members, list):
+                all_members.extend(members)
+        team_members = list(set(all_members))
+    
+    if not team_members:
+        return ""
+    
+    # Format team members for JQL
+    member_list = ', '.join([f'"{member}"' for member in team_members])
+    # Updated JQL: Bugs by created date, non-bugs by resolved date
+    jql = (
+        f'((issuetype = Bug AND created >= -{weeks_duration}w AND reporter IN ({member_list})) OR '
+        f'(issuetype != Bug AND resolved >= -{weeks_duration}w AND assignee IN ({member_list})))'
+    )
+    return jql
+
+def normalize_name(name):
+    """
+    Normalize Jira display names to match team member dictionary format
+    Converts 'Firstname Lastname [C]' to 'firstname.lastname'
+    """
+    if not name or pd.isna(name) or isinstance(name, float):
+        return name
+    
+    # Remove [C] suffix and clean up
+    name = name.replace(' [C]', '').strip()
+    
+    # Split into parts and convert to lowercase
+    parts = name.split()
+    if len(parts) >= 2:
+        # Convert 'Firstname Lastname' to 'firstname.lastname'
+        return f"{parts[0].lower()}.{parts[1].lower()}"
+    elif len(parts) == 1:
+        return parts[0].lower()
+    else:
+        return name.lower()
+
+def is_team_member(name, team_members):
+    """
+    Check if a name (from CSV) matches any team member in the list
+    """
+    if not name:
+        return False
+    
+    normalized_name = normalize_name(name)
+    return normalized_name in team_members
+
+def jira_data_to_csv_with_all_fields(jira_data, output_file):
+    """
+    Convert Jira API response to CSV format with all available fields
+    """
+    if not jira_data or 'issues' not in jira_data:
+        raise Exception("No issues found in Jira response")
+    
+    csv_data = []
+    
+    for issue in jira_data['issues']:
+        fields = issue.get('fields', {})
+        
+        # Extract comments
+        comments = fields.get('comment', {}).get('comments', [])
+        comment_text = ' '.join([comment.get('body', '') for comment in comments])
+        
+        # Get and normalize assignee and reporter names
+        assignee_display = fields.get('assignee', {}).get('displayName', '') if fields.get('assignee') else ''
+        reporter_display = fields.get('reporter', {}).get('displayName', '') if fields.get('reporter') else ''
+        
+        # Create row with all available fields
+        row = {
+            'Issue key': issue.get('key', ''),
+            'Summary': fields.get('summary', ''),
+            'Status': fields.get('status', {}).get('name', '') if fields.get('status') else '',
+            'Assignee': assignee_display,  # Keep original for display
+            'Reporter': reporter_display,  # Keep original for display
+            'Issue Type': fields.get('issuetype', {}).get('name', '') if fields.get('issuetype') else '',
+            'Created': fields.get('created', ''),
+            'Updated': fields.get('updated', ''),
+            'Comment': comment_text,
+            'Project key': fields.get('project', {}).get('key', '') if fields.get('project') else '',
+            'Priority': fields.get('priority', {}).get('name', '') if fields.get('priority') else '',
+            'Resolution': fields.get('resolution', {}).get('name', '') if fields.get('resolution') else '',
+            'Resolved': fields.get('resolutiondate', ''),
+            'Sprint': '',  # Sprint info might be in custom fields - will be populated from custom fields
+            'Custom field (Story Points)': fields.get('customfield_10016', ''),  # Common story points field
+            'Custom field ([CHART] Date of First Response)': ''  # This field is required by process_data
+        }
+        
+        # Add any additional custom fields that might be present
+        for field_name, field_value in fields.items():
+            if field_name.startswith('customfield_') and field_name not in ['customfield_10016']:
+                # Convert custom field name to a more readable format
+                display_name = f'Custom field ({field_name})'
+                if isinstance(field_value, dict):
+                    field_str = field_value.get('value', '') or field_value.get('name', '') or str(field_value)
+                    row[display_name] = field_str
+                    # Check if this might be Sprint information
+                    if 'sprint' in str(field_value).lower() or 'sprint' in str(field_value).lower():
+                        row['Sprint'] = field_str
+                else:
+                    field_str = str(field_value) if field_value is not None else ''
+                    row[display_name] = field_str
+                    # Check if this might be Sprint information
+                    if 'sprint' in str(field_value).lower():
+                        row['Sprint'] = field_str
+        
+        csv_data.append(row)
+    
+    # Create DataFrame and save to CSV
+    df = pd.DataFrame(csv_data)
+    df.to_csv(output_file, index=False)
+    
+    return len(csv_data)
+
+def run_gerrit_script(csv_file, output_json, gerrit_username=None, gerrit_password=None):
+    """
+    Run the fetch_gerrit_comments.py script with the generated CSV
+    """
+    try:
+        # Get the path to the gerrit script
+        script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fetch_gerrit_comments.py')
+        
+        # Build command with optional Gerrit credentials
+        cmd = ['python3', script_path, '--csv', csv_file, '--output', output_json]
+        
+        if gerrit_username and gerrit_password:
+            cmd.extend(['--user', gerrit_username, '--password', gerrit_password])
+            logging.info(f"Adding Gerrit credentials to command")
+        else:
+            logging.info(f"No Gerrit credentials provided - will create empty structure")
+        
+        # Run the script
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            raise Exception(f"Gerrit script failed: {result.stderr}")
+        
+        return True
+        
+    except subprocess.TimeoutExpired:
+        raise Exception("Gerrit script timed out")
+    except Exception as e:
+        raise Exception(f"Failed to run Gerrit script: {str(e)}")
+
+@app.route('/auto_fetch_data', methods=['POST'])
+def auto_fetch_data():
+    """
+    Handle automatic data fetching from Jira
+    """
+    try:
+        # Get form data
+        jira_url = request.form.get('jira_url', 'https://jira.cohesity.com/')
+        username = request.form.get('jira_username', '')
+        api_token = request.form.get('jira_token', '')
+        weeks_duration = int(request.form.get('weeks_duration', 4))
+        # Always fetch all data (all teams)
+        selected_team = 'All'
+        team_members = TEAM_MEMBERS_DICT['All']
+        # Remove any use of selected_team from the form data in this route
+        fetch_gerrit = request.form.get('fetch_gerrit')
+        gerrit_username = request.form.get('gerrit_username', '')
+        gerrit_password = request.form.get('gerrit_password', '')
+        
+        # Only require Gerrit credentials if fetch_gerrit is checked
+        if fetch_gerrit:
+            if not gerrit_username or not gerrit_password:
+                return jsonify({'success': False, 'error': 'Gerrit username and password are required to fetch Gerrit data.'})
+        
+        # Validate inputs
+        if not jira_url or not username or not api_token:
+            return jsonify({'success': False, 'error': 'Missing required Jira credentials (username and API token)'})
+        
+        # Get team members for the selected team
+        if selected_team in TEAM_MEMBERS_DICT:
+            team_members = TEAM_MEMBERS_DICT[selected_team]
+        else:
+            return jsonify({'success': False, 'error': f'Invalid team: {selected_team}'})
+        
+        # Generate JQL query
+        jql_query = generate_jql_for_team(selected_team, team_members, weeks_duration)
+        if not jql_query:
+            return jsonify({'success': False, 'error': 'No team members found'})
+        
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as csv_file:
+            csv_path = csv_file.name
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as json_file:
+            json_path = json_file.name
+        
+        try:
+            # Step 1: Fetch data from Jira with all fields
+            logging.info(f"Fetching data from Jira with JQL: {jql_query}")
+            jira_data = get_jira_issues_with_all_fields(jira_url, username, api_token, jql_query)
+            
+            # Step 2: Convert to CSV with all fields
+            logging.info("Converting Jira data to CSV with all fields")
+            issue_count = jira_data_to_csv_with_all_fields(jira_data, csv_path)
+            
+            if issue_count == 0:
+                return jsonify({'success': False, 'error': 'No issues found for the selected team'})
+            
+            # When running the Gerrit script, only do so if fetch_gerrit is checked
+            if fetch_gerrit:
+                # Step 3: Run Gerrit script
+                username_display = '*' * len(gerrit_username) if gerrit_username else 'None'
+                password_display = '*' * len(gerrit_password) if gerrit_password else 'None'
+                logging.info(f"Running Gerrit script with credentials: username={username_display}, password={password_display}")
+                gerrit_success = run_gerrit_script(csv_path, json_path, gerrit_username, gerrit_password)
+                if not gerrit_success:
+                    return jsonify({'success': False, 'error': 'Failed to process Gerrit comments'})
+            else:
+                # If not fetching Gerrit, create an empty JSON file for Gerrit data
+                with open(json_path, 'w') as f:
+                    f.write('[]')
+            
+            # Step 4: Save files to uploads directory
+            upload_dir = app.config['UPLOAD_FOLDER']
+            
+            # Save CSV
+            csv_filename = f"jira_auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            csv_upload_path = os.path.join(upload_dir, csv_filename)
+            with open(csv_path, 'r') as src, open(csv_upload_path, 'w') as dst:
+                dst.write(src.read())
+            
+            # Save JSON
+            json_filename = f"gerrit_auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            json_upload_path = os.path.join(upload_dir, json_filename)
+            with open(json_path, 'r') as src, open(json_upload_path, 'w') as dst:
+                dst.write(src.read())
+            
+            # Store in session
+            session['jira_file'] = csv_filename
+            session['gerrit_file'] = json_filename
+            session['selected_team'] = selected_team
+            
+            return jsonify({
+                'success': True, 
+                'message': f'Successfully fetched {issue_count} issues from Jira with all fields',
+                'csv_file': csv_filename,
+                'json_file': json_filename
+            })
+            
+        finally:
+            # Clean up temporary files
+            try:
+                os.unlink(csv_path)
+                os.unlink(json_path)
+            except:
+                pass
+                
+    except Exception as e:
+        logging.error(f"Auto fetch error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(host="127.0.0.1", port=8000, debug=True) 

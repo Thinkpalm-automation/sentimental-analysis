@@ -9,7 +9,7 @@ This script extracts Gerrit code review comments related to JIRA issues from a J
 ### Prerequisites
 - Python 3.x installed
 - Access to the JIRA CSV export file
-- Gerrit (HTTP)credentials (username and password)
+- Gerrit (HTTP)credentials (username and password) **(only required if you want to fetch Gerrit data)**
 - Internet access to reach the Gerrit server
 
 ---
@@ -22,13 +22,22 @@ This script extracts Gerrit code review comments related to JIRA issues from a J
    cd C:\Users\testuser\Documents\Jira Analysis\flask_app
 
 3. **Run the script with required arguments:**
-   python fetch_gerrit_comments.py --csv <path_to_jira_csv> --user <gerrit_username> --password <gerrit_password>
+   python fetch_gerrit_comments.py --csv <path_to_jira_csv> [--user <gerrit_username> --password <gerrit_password>]
 
    - Replace `<path_to_jira_csv>` with the path to your JIRA CSV file (e.g., `Jira_squad_6_weeks_data.csv`).
-   - Replace `<gerrit_username>` and `<gerrit_password>` with your Gerrit (HTTP)credentials.
+   - If you want to fetch Gerrit data, provide your Gerrit (HTTP) credentials with `--user` and `--password`.
+   - If you do **not** provide credentials, the script will only process Jira data and create an empty Gerrit JSON structure.
 
-   **Example:**
+   **Example (with Gerrit):**
    python fetch_gerrit_comments.py --csv Jira_squad_6_weeks_data.csv --user johndoe --password sde2e34dEFs4567BGa2d34g
+   **Example (Jira only):**
+   python fetch_gerrit_comments.py --csv Jira_squad_6_weeks_data.csv
+
+---
+
+### Flask App Integration
+- In the Flask dashboard, Gerrit data is optional. If you check the "Fetch Gerrit Data" box and provide credentials, the app will fetch and analyze Gerrit comments. If you leave it unchecked, only Jira data is processed.
+
 ---
 
 ### What the Script Does
