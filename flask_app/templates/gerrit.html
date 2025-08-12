@@ -1,7 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Gerrit Analysis | Jira Analysis Dashboard{% endblock %}
 {% block content %}
-<h2>Gerrit Analysis</h2>
+<!-- <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Gerrit Analysis</h2>
+    <a href="/settings" class="btn btn-outline-primary">
+        <i class="fas fa-cog"></i> Settings
+    </a>
+</div> -->
 {% if missing_files %}
 <div class="alert alert-danger" role="alert">
     Please upload both a JIRA CSV/Excel and a Gerrit JSON file on the Home page.

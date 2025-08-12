@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}Settings | Jira Analysis Dashboard{% endblock %}
+{% block content %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+    {% if show_redirect %}
+      <script>
+        setTimeout(function() {
+          window.location.href = "/";
+        }, 2000);
+      </script>
+    {% endif %}
+  {% endif %}
+{% endwith %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-cog"></i> Settings
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row">
+                            <!-- Jira Settings -->
+                            <div class="col-md-6">
+                                <h5 class="mb-3">
+                                    <i class="fas fa-server"></i> Jira Configuration
+                                </h5>
+                                
+                                <div class="mb-3">
+                                    <label for="server_url" class="form-label">Server URL</label>
+                                    <input type="url" class="form-control" id="server_url" name="server_url" value="{{ settings.get('server_url', '') }}" placeholder="Enter your  server URL" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="username" name="username" value="{{ settings.get('username', '') }}" placeholder="your.email@company.com" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="password" class="form-label">Password/API Token</label>
+                                    <input type="password" class="form-control" id="password" name="password" value="{{ settings.get('password', '') }}" placeholder="Enter your password or API token" required>
+                                </div>
+                            </div>
+                            
+                            <!-- Gerrit Settings -->
+                            <div class="col-md-6">
+                                <h5 class="mb-3">
+                                    <i class="fas fa-code-branch"></i> Gerrit Configuration
+                                </h5>
+                                
+                                <div class="mb-3">
+                                    <label for="gerrit_username" class="form-label">Gerrit Username</label>
+                                    <input type="text" class="form-control" id="gerrit_username" name="gerrit_username" value="{{ settings.get('gerrit_username', '') }}" placeholder="your.gerrit.username" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="gerrit_password" class="form-label">Gerrit Password</label>
+                                    <input type="password" class="form-control" id="gerrit_password" name="gerrit_password" value="{{ settings.get('gerrit_password', '') }}" placeholder="Enter your Gerrit password" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Note:</strong> Your credentials are stored locally in a JSON file for convenience. 
+                            Make sure to keep this file secure and don't share it with others.
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="/gerrit" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Gerrit Analysis
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

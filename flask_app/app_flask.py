@@ -11,6 +11,32 @@ import tempfile
 import logging
 
 # --- Sentiment Analysis Keyword Lists and Functions (from app.py) ---
+import json
+import os
+
+# Settings file path
+SETTINGS_FILE = 'settings.json'
+
+def load_settings():
+    """Load settings from JSON file"""
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+    return {}
+
+def save_settings(settings):
+    """Save settings to JSON file"""
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+        return False
+
 BUG_NEGATIVE_KEYWORDS = [
     "not reproducible", "cannot reproduce", "unable to reproduce", "not a bug", "works as designed", "as per design", "expected behavior", "duplicate issue", "duplicate of", "already fixed", "fix available", "configuration issue", "environment issue", "invalid bug", "invalid issue", "not valid", "not required", "user error", "tester error",
     "no steps provided", "need more info", "insufficient information", "steps missing", "logs not attached", "data missing", "test case issue", "not enough context",
@@ -274,6 +300,9 @@ def inject_team_context():
 @app.route('/', methods=['GET', 'POST'])
 def home():
     import json
+    # Load saved settings
+    saved_settings = load_settings()
+    
     filters = {
         "sprints": [],
         "assignees": [],
@@ -538,7 +567,8 @@ def home():
         team_list=list(TEAM_MEMBERS_DICT.keys()),
         total_bugs=total_bugs,
         total_nonbugs=total_nonbugs,
-        total_gerrit=total_gerrit
+        total_gerrit=total_gerrit,
+        settings=saved_settings
     )
 
 @app.route('/set_team', methods=['POST'])
@@ -1090,18 +1120,21 @@ def auto_fetch_data():
     Handle automatic data fetching from Jira
     """
     try:
-        # Get form data
-        jira_url = request.form.get('jira_url', 'https://jira.cohesity.com/')
-        username = request.form.get('jira_username', '')
-        api_token = request.form.get('jira_token', '')
+        # Load saved settings
+        saved_settings = load_settings()
+        
+        # Get form data with saved settings as defaults
+        jira_url = request.form.get('jira_url', saved_settings.get('server_url', 'https://jira.cohesity.com/'))
+        username = request.form.get('jira_username', saved_settings.get('username', ''))
+        api_token = request.form.get('jira_token', saved_settings.get('password', ''))
         weeks_duration = int(request.form.get('weeks_duration', 4))
         # Always fetch all data (all teams)
         selected_team = 'All'
         team_members = TEAM_MEMBERS_DICT['All']
         # Remove any use of selected_team from the form data in this route
         fetch_gerrit = request.form.get('fetch_gerrit')
-        gerrit_username = request.form.get('gerrit_username', '')
-        gerrit_password = request.form.get('gerrit_password', '')
+        gerrit_username = request.form.get('gerrit_username', saved_settings.get('gerrit_username', ''))
+        gerrit_password = request.form.get('gerrit_password', saved_settings.get('gerrit_password', ''))
         
         # Only require Gerrit credentials if fetch_gerrit is checked
         if fetch_gerrit:
@@ -1194,6 +1227,40 @@ def auto_fetch_data():
     except Exception as e:
         logging.error(f"Auto fetch error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    """Settings page for Gerrit configuration"""
+    show_redirect = False
+    if request.method == 'POST':
+        try:
+            settings_data = {
+                'server_url': request.form.get('server_url', ''),
+                'username': request.form.get('username', ''),
+                'password': request.form.get('password', ''),
+                'gerrit_username': request.form.get('gerrit_username', ''),
+                'gerrit_password': request.form.get('gerrit_password', '')
+            }
+            
+            if save_settings(settings_data):
+                flash('Settings saved successfully!', 'success')
+                show_redirect = True
+            else:
+                flash('Error saving settings!', 'danger')
+                
+        except Exception as e:
+            flash(f'Error: {str(e)}', 'danger')
+    
+    # Load current settings
+    current_settings = load_settings()
+    
+    return render_template('settings.html', settings=current_settings, show_redirect=show_redirect)
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """API endpoint to get settings"""
+    settings = load_settings()
+    return jsonify(settings)
 
 if __name__ == '__main__':
     app.run(host="127.0.0.1", port=8000, debug=True) 

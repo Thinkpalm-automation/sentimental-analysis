@@ -28,6 +28,7 @@
 {% block content %}
 <div class="my-4">
     <h4 class="text-success">Select Data Source Mode</h4>
+</div>
     
     <!-- Data Status Indicator -->
     <div class="data-status mb-3" id="dataStatus">
@@ -70,23 +71,13 @@
         </div>
     </div>
 
-    <!-- Manual Mode Options -->
+    <!-- Manual Mode Option -->
     <div class="manual-options" id="manualOptions">
         <div class="alert alert-info" role="alert">
             <strong>Instructions:</strong> Please upload your <b>JIRA CSV or Excel file</b>.<br>
             For Gerrit analysis, also upload your <b>Consolidated Gerrit Comments JSON</b> at the same time.<br>
             <span class="text-danger">Gerrit analysis will only be available if both files are uploaded together.</span>
         </div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
         <form method="post" enctype="multipart/form-data" id="upload-form">
             <input type="hidden" name="mode" value="manual">
             <label for="jira_file" class="form-label">JIRA CSV or Excel file</label>
@@ -108,17 +99,17 @@
             <div class="row">
                 <div class="col-md-6">
                     <label for="jira_url" class="form-label">Jira Server URL</label>
-                    <input type="text" name="jira_url" id="jira_url" class="form-control mb-2" value="https://jira.cohesity.com/" readonly>
+                    <input type="text" name="jira_url" id="jira_url" class="form-control mb-2" value="{{ settings.get('server_url', 'https://jira.cohesity.com/') }}" readonly>
                 </div>
                 <div class="col-md-6">
                     <label for="jira_username" class="form-label">Jira Username/Email</label>
-                    <input type="text" name="jira_username" id="jira_username" class="form-control mb-2" value="" placeholder="Enter your Jira username or email">
+                    <input type="text" name="jira_username" id="jira_username" class="form-control mb-2" value="{{ settings.get('username', '') }}" placeholder="Enter your Jira username or email">
                 </div>
             </div>
             <div class="row">
                 <div class="col-md-6">
                     <label for="jira_token" class="form-label">Jira API Token (PAT)</label>
-                    <input type="password" name="jira_token" id="jira_token" class="form-control mb-2" value="" placeholder="Enter your Personal Access Token">
+                    <input type="password" name="jira_token" id="jira_token" class="form-control mb-2" value="{{ settings.get('password', '') }}" placeholder="Enter your Personal Access Token">
                 </div>
             </div>
             <div class="row">
@@ -137,11 +128,11 @@
               <div class="row">
                 <div class="col-md-6">
                   <label for="gerrit_username" class="form-label">Gerrit Username</label>
-                  <input type="text" name="gerrit_username" id="gerrit_username" class="form-control mb-2">
+                  <input type="text" name="gerrit_username" id="gerrit_username" class="form-control mb-2" value="{{ settings.get('gerrit_username', '') }}">
                 </div>
                 <div class="col-md-6">
                   <label for="gerrit_password" class="form-label">Gerrit Password</label>
-                  <input type="password" name="gerrit_password" id="gerrit_password" class="form-control mb-2">
+                  <input type="password" name="gerrit_password" id="gerrit_password" class="form-control mb-2" value="{{ settings.get('gerrit_password', '') }}">
                 </div>
               </div>
             </div>
@@ -578,6 +569,17 @@ $(document).ready(function() {
     if (this.checked) {
       $('#gerritCredentials').show();
       $('#gerrit_username, #gerrit_password').attr('required', true);
+      // Autofill Gerrit credentials if empty
+      if (!$('#gerrit_username').val() || !$('#gerrit_password').val()) {
+        $.get('/api/settings', function(data) {
+          if (data.gerrit_username && !$('#gerrit_username').val()) {
+            $('#gerrit_username').val(data.gerrit_username);
+          }
+          if (data.gerrit_password && !$('#gerrit_password').val()) {
+            $('#gerrit_password').val(data.gerrit_password);
+          }
+        });
+      }
     } else {
       $('#gerritCredentials').hide();
       $('#gerrit_username, #gerrit_password').removeAttr('required').val('');
@@ -587,6 +589,17 @@ $(document).ready(function() {
   if ($('#fetchGerrit').is(':checked')) {
     $('#gerritCredentials').show();
     $('#gerrit_username, #gerrit_password').attr('required', true);
+    // Autofill on page load if needed
+    if (!$('#gerrit_username').val() || !$('#gerrit_password').val()) {
+      $.get('/api/settings', function(data) {
+        if (data.gerrit_username && !$('#gerrit_username').val()) {
+          $('#gerrit_username').val(data.gerrit_username);
+        }
+        if (data.gerrit_password && !$('#gerrit_password').val()) {
+          $('#gerrit_password').val(data.gerrit_password);
+        }
+      });
+    }
   } else {
     $('#gerritCredentials').hide();
     $('#gerrit_username, #gerrit_password').removeAttr('required').val('');
