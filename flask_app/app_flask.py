@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -1213,7 +1213,9 @@ def auto_fetch_data():
                 'success': True, 
                 'message': f'Successfully fetched {issue_count} issues from Jira with all fields',
                 'csv_file': csv_filename,
-                'json_file': json_filename
+                'json_file': json_filename,
+                'download_csv_url': url_for('download_auto_csv'),
+                'view_csv_url': url_for('view_auto_csv')
             })
             
         finally:
@@ -1261,6 +1263,52 @@ def get_settings():
     """API endpoint to get settings"""
     settings = load_settings()
     return jsonify(settings)
+
+@app.route('/download_auto_csv', methods=['GET'])
+def download_auto_csv():
+    """Download the CSV generated in auto mode"""
+    filename = session.get('jira_file')
+    if not filename or not filename.startswith('jira_auto_'):
+        return jsonify({'success': False, 'error': 'No auto-mode CSV available'}), 404
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(filepath):
+        return jsonify({'success': False, 'error': 'CSV not found'}), 404
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+@app.route('/view_auto_csv', methods=['GET'])
+def view_auto_csv():
+    """Render a simple HTML table view of the auto-mode CSV"""
+    filename = session.get('jira_file')
+    if not filename or not filename.startswith('jira_auto_'):
+        return "No auto-mode CSV available", 404
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(filepath):
+        return "CSV not found", 404
+    try:
+        df = pd.read_csv(filepath)
+    except Exception:
+        return "Failed to read CSV", 500
+    if len(df) > 1000:
+        df = df.head(1000)
+    table_html = df.to_html(index=False, border=0)
+    return f"""
+    <html>
+      <head>
+        <title>{filename}</title>
+        <style>
+          table {{ border-collapse: collapse }}
+          td, th {{ padding: 6px 10px; border: 1px solid #ddd }}
+          body {{ font-family: Arial, sans-serif; margin: 20px; }}
+          a {{ text-decoration: none; color: #0a58ca; }}
+        </style>
+      </head>
+      <body>
+        <h3>{filename}</h3>
+        <div><a href="{url_for('download_auto_csv')}">Download CSV</a></div>
+        <div style="margin-top: 12px;">{table_html}</div>
+      </body>
+    </html>
+    """
 
 if __name__ == '__main__':
     app.run(host="127.0.0.1", port=8000, debug=True) 
