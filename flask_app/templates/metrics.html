@@ -6,8 +6,16 @@
 </div>
 <div class="card">
     <div class="card-body">
-        <form method="get" action="/metrics" class="row g-3">
-            <div class="col-md-6">
+        <form method="get" action="/metrics" class="row g-3" id="metricsForm">
+            <div class="col-md-4">
+                <label for="squad" class="form-label">Squad</label>
+                <select id="squad" name="squad" class="form-select">
+                    {% for squad in filters.squads %}
+                    <option value="{{ squad }}" {% if selected_squad == squad %}selected{% endif %}>{{ squad }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
                 <label for="engineer" class="form-label">Engineer</label>
                 <select id="engineer" name="member" class="form-select">
                     {% for member in filters.members %}
@@ -15,7 +23,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label for="weeks" class="form-label">Number of weeks</label>
                 <select id="weeks" name="weeks" class="form-select">
                     {% for w in filters.weeks_options %}
@@ -25,7 +33,7 @@
             </div>
             <div class="col-12">
                 <button type="submit" class="btn btn-success">
-                    <i class="fas fa-chart-line"></i> View Metrics
+                    <i class="fas fa-filter"></i> View Metrics
                 </button>
             </div>
         </form>
@@ -39,15 +47,64 @@
 {% if chart_ready %}
 <div class="card mt-4">
   <div class="card-body">
-    <h6 class="mb-3">Sentiment for {% if selected_member and selected_member != 'All' %}{{ selected_member }}{% else %}All Engineers{% endif %} (Last Week)</h6>
+    <h6 class="mb-3">Sentiment for {% if selected_member and selected_member != 'All' %}{{ selected_member }}{% else %}{% if selected_squad and selected_squad != 'All' %}{{ selected_squad }} Squad{% else %}All Engineers{% endif %}{% endif %} (Last Week)</h6>
     <canvas id="sentimentChart" height="120"></canvas>
   </div>
 </div>
 {% endif %}
+
+<!-- Error Modal -->
+<div class="modal fade" id="weekErrorModal" tabindex="-1" aria-labelledby="weekErrorLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="weekErrorLabel">Insufficient Data</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="weekErrorBody">
+        {{ error_message }}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script id="chartReady" type="application/json">{{ chart_ready | tojson }}</script>
 <script id="sentimentCounts" type="application/json">{{ sentiment_counts | tojson }}</script>
+<script id="errorShow" type="application/json">{{ error_show | tojson }}</script>
+<script id="errorMessage" type="application/json">{{ error_message | tojson }}</script>
+<script>
+  (function(){
+    var form = document.getElementById('metricsForm');
+    var squad = document.getElementById('squad');
+    if (squad && form) {
+      squad.addEventListener('change', function(){
+        var eng = document.getElementById('engineer');
+        if (eng) { eng.value = 'All'; }
+        form.submit();
+      });
+    }
+  })();
+</script>
+<script>
+  (function(){
+    function parseJson(id, fallback){
+      var el = document.getElementById(id);
+      try { return JSON.parse((el && el.textContent) || ''); } catch(e){ return fallback; }
+    }
+    var show = !!parseJson('errorShow', false);
+    if (show) {
+      var msg = parseJson('errorMessage', 'Insufficient data');
+      var body = document.getElementById('weekErrorBody');
+      if (body) body.textContent = msg;
+      var modal = new bootstrap.Modal(document.getElementById('weekErrorModal'));
+      modal.show();
+    }
+  })();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   (function() {

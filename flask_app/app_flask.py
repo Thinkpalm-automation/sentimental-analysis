@@ -1269,24 +1269,48 @@ def get_settings():
 
 @app.route('/metrics', methods=['GET'])
 def metrics():
+    selected_squad = request.args.get('squad', 'All')
     selected_member = request.args.get('member', 'All')
     try:
-        selected_weeks = int(request.args.get('weeks', 4))
+        selected_weeks = int(request.args.get('weeks', 1))
     except Exception:
-        selected_weeks = 4
-    # Build members list with 'All'
-    members = TEAM_MEMBERS_DICT.get('All', [])
+        selected_weeks = 1
+    # Build squads and members list with 'All'
+    squads = list(TEAM_MEMBERS_DICT.keys())
+    if 'All' not in squads:
+        squads.insert(0, 'All')
+    else:
+        squads = ['All'] + [s for s in squads if s != 'All']
+    if selected_squad in TEAM_MEMBERS_DICT and selected_squad != 'All':
+        base_members = TEAM_MEMBERS_DICT[selected_squad]
+    else:
+        base_members = TEAM_MEMBERS_DICT.get('All', [])
     filters = {
-        'members': ['All'] + members,
+        'squads': squads,
+        'members': ['All'] + base_members,
         'weeks_options': [1, 2, 3, 4, 5, 6]
     }
     sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
     chart_ready = False
-    if selected_weeks == 1:
+    # --- Weeks data availability check ---
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    weekly_dir = os.path.join(project_root, 'Weekly_Data')
+    available_weeks = 0
+    if os.path.isdir(weekly_dir):
         try:
-            # Locate the most recent Week<week>_<year> files in Weekly_Data
-            project_root = os.path.dirname(os.path.dirname(__file__))
-            weekly_dir = os.path.join(project_root, 'Weekly_Data')
+            for fname in os.listdir(weekly_dir):
+                if re.match(r'^Week\d+_\d+\.csv$', fname):
+                    available_weeks += 1
+        except Exception:
+            available_weeks = 0
+    error_show = False
+    error_message = ""
+    if selected_weeks > 1 and available_weeks < selected_weeks:
+        error_show = True
+        error_message = f"Only {available_weeks} week(s) of data found, but you selected {selected_weeks}."
+    # --- Compute only for latest week when weeks == 1 and no error ---
+    if selected_weeks == 1 and not error_show:
+        try:
             latest_csv = None
             latest_year_week = (-1, -1)
             if os.path.isdir(weekly_dir):
@@ -1308,13 +1332,19 @@ def metrics():
             if os.path.exists(csv_path):
                 df = pd.read_csv(csv_path)
                 processed_df = process_data(df)
-                # Filter by selected member if not 'All'
+                # Apply squad/member filters
                 if selected_member and selected_member != 'All':
                     bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug') & (processed_df['Reporter'].apply(lambda x: is_team_member(x, [selected_member])))]
                     nonbug_df = processed_df[(processed_df['Issue Type'].str.lower() != 'bug') & (processed_df['Assignee'].apply(lambda x: is_team_member(x, [selected_member])))]
                     filtered_df = pd.concat([bug_df, nonbug_df], ignore_index=True)
                 else:
-                    filtered_df = processed_df
+                    if selected_squad and selected_squad != 'All':
+                        squad_members = TEAM_MEMBERS_DICT.get(selected_squad, [])
+                        bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug') & (processed_df['Reporter'].apply(lambda x: is_team_member(x, squad_members)))]
+                        nonbug_df = processed_df[(processed_df['Issue Type'].str.lower() != 'bug') & (processed_df['Assignee'].apply(lambda x: is_team_member(x, squad_members)))]
+                        filtered_df = pd.concat([bug_df, nonbug_df], ignore_index=True)
+                    else:
+                        filtered_df = processed_df
                 # Aggregate sentiments from CSV
                 sentiment_counts["Positive"] += int((filtered_df['Customer Sentiment'] == 'Positive').sum())
                 sentiment_counts["Neutral"] += int((filtered_df['Customer Sentiment'] == 'Neutral').sum())
@@ -1330,6 +1360,9 @@ def metrics():
                         if selected_member and selected_member != 'All':
                             if not assignee or not is_team_member(assignee, [selected_member]):
                                 continue
+                        elif selected_squad and selected_squad != 'All':
+                            if not assignee or not is_team_member(assignee, TEAM_MEMBERS_DICT.get(selected_squad, [])):
+                                continue
                         comments = entry.get('comments', {})
                         if isinstance(comments, dict):
                             for comment_list in comments.values():
@@ -1343,7 +1376,17 @@ def metrics():
                 chart_ready = True
         except Exception:
             chart_ready = False
-    return render_template('metrics.html', filters=filters, selected_member=selected_member, selected_weeks=selected_weeks, sentiment_counts=sentiment_counts, chart_ready=chart_ready)
+    return render_template(
+        'metrics.html',
+        filters=filters,
+        selected_squad=selected_squad,
+        selected_member=selected_member,
+        selected_weeks=selected_weeks,
+        sentiment_counts=sentiment_counts,
+        chart_ready=chart_ready,
+        error_show=error_show,
+        error_message=error_message
+    )
 
 @app.route('/download_auto_csv', methods=['GET'])
 def download_auto_csv():
