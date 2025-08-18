@@ -1264,6 +1264,84 @@ def get_settings():
     settings = load_settings()
     return jsonify(settings)
 
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    selected_member = request.args.get('member', 'All')
+    try:
+        selected_weeks = int(request.args.get('weeks', 4))
+    except Exception:
+        selected_weeks = 4
+    # Build members list with 'All'
+    members = TEAM_MEMBERS_DICT.get('All', [])
+    filters = {
+        'members': ['All'] + members,
+        'weeks_options': [1, 2, 3, 4, 5, 6]
+    }
+    sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
+    chart_ready = False
+    if selected_weeks == 1:
+        try:
+            # Locate the most recent Week<week>_<year> files in Weekly_Data
+            project_root = os.path.dirname(os.path.dirname(__file__))
+            weekly_dir = os.path.join(project_root, 'Weekly_Data')
+            latest_csv = None
+            latest_year_week = (-1, -1)
+            if os.path.isdir(weekly_dir):
+                for fname in os.listdir(weekly_dir):
+                    m = re.match(r'^Week(\d+)_(\d+)\.csv$', fname)
+                    if m:
+                        w = int(m.group(1))
+                        y = int(m.group(2))
+                        if (y, w) > latest_year_week:
+                            latest_year_week = (y, w)
+                            latest_csv = fname
+            if latest_csv:
+                base = latest_csv.rsplit('.', 1)[0]
+                csv_path = os.path.join(weekly_dir, latest_csv)
+                json_path = os.path.join(weekly_dir, base + '.json')
+            else:
+                csv_path = ''
+                json_path = ''
+            if os.path.exists(csv_path):
+                df = pd.read_csv(csv_path)
+                processed_df = process_data(df)
+                # Filter by selected member if not 'All'
+                if selected_member and selected_member != 'All':
+                    bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug') & (processed_df['Reporter'].apply(lambda x: is_team_member(x, [selected_member])))]
+                    nonbug_df = processed_df[(processed_df['Issue Type'].str.lower() != 'bug') & (processed_df['Assignee'].apply(lambda x: is_team_member(x, [selected_member])))]
+                    filtered_df = pd.concat([bug_df, nonbug_df], ignore_index=True)
+                else:
+                    filtered_df = processed_df
+                # Aggregate sentiments from CSV
+                sentiment_counts["Positive"] += int((filtered_df['Customer Sentiment'] == 'Positive').sum())
+                sentiment_counts["Neutral"] += int((filtered_df['Customer Sentiment'] == 'Neutral').sum())
+                sentiment_counts["Negative"] += int((filtered_df['Customer Sentiment'] == 'Negative').sum())
+                # Include Gerrit sentiments if JSON exists
+                if os.path.exists(json_path):
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        gerrit_data = json.load(f)
+                    issue_key_to_assignee = dict(zip(processed_df['Issue key'], processed_df['Assignee']))
+                    for entry in gerrit_data:
+                        issue_key = entry.get('issue_key')
+                        assignee = issue_key_to_assignee.get(issue_key)
+                        if selected_member and selected_member != 'All':
+                            if not assignee or not is_team_member(assignee, [selected_member]):
+                                continue
+                        comments = entry.get('comments', {})
+                        if isinstance(comments, dict):
+                            for comment_list in comments.values():
+                                if isinstance(comment_list, list):
+                                    for comment in comment_list:
+                                        if isinstance(comment, dict):
+                                            msg = comment.get('message')
+                                            s, _, _ = get_gerrit_sentiment(msg)
+                                            if s in sentiment_counts:
+                                                sentiment_counts[s] += 1
+                chart_ready = True
+        except Exception:
+            chart_ready = False
+    return render_template('metrics.html', filters=filters, selected_member=selected_member, selected_weeks=selected_weeks, sentiment_counts=sentiment_counts, chart_ready=chart_ready)
+
 @app.route('/download_auto_csv', methods=['GET'])
 def download_auto_csv():
     """Download the CSV generated in auto mode"""

@@ -7,12 +7,35 @@ import argparse
 import time
 import logging
 import glob
+from datetime import date
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 # Gerrit credentials will be set from command-line arguments
 AUTH = None
+
+def ensure_weekly_data_dir():
+    """Ensure the Weekly_Data directory exists in the project root."""
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    weekly_data_dir = os.path.join(project_root, 'Weekly_Data')
+    os.makedirs(weekly_data_dir, exist_ok=True)
+    return weekly_data_dir
+
+def load_settings():
+    """Load settings from settings.json (project root or flask_app/)."""
+    candidates = [
+        os.path.join(os.path.dirname(__file__), 'flask_app', 'settings.json'),
+        os.path.join(os.path.dirname(__file__), 'settings.json'),
+    ]
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 def extract_issue_keys_and_links(csv_file):
     """
@@ -67,9 +90,9 @@ def fetch_commit_message(commit_url, max_retries=3):
             time.sleep(1)
     return ''
 
-def download_comments(change_number, project, issue_key, max_retries=3):
+def download_comments(change_number, project, issue_key, weekly_data_dir, max_retries=3):
     """
-    Download comments for a Gerrit change and save to a JSON file named <issue_key>_<project>_<change_number>.json.
+    Download comments for a Gerrit change and save to a JSON file in Weekly_Data folder.
     Retries up to max_retries times on failure.
     Returns the comments as a Python object (dict) if successful, else None.
     """
@@ -85,7 +108,7 @@ def download_comments(change_number, project, issue_key, max_retries=3):
                         text = text.split('\n', 1)[1]
                     if text and (text.startswith('{') or text.startswith('[')):
                         comments = json.loads(text)
-                        filename = f'{issue_key}_{project}_{change_number}.json'
+                        filename = os.path.join(weekly_data_dir, f'{issue_key}_{project}_{change_number}.json')
                         with open(filename, 'w', encoding='utf-8') as f:
                             json.dump(comments, f, indent=2)
                         logging.info(f'Comments saved to {filename}')
@@ -107,7 +130,7 @@ def download_comments(change_number, project, issue_key, max_retries=3):
 def main():
     """
     Main entry point: parses arguments, extracts issue keys and links, fetches commit messages and downloads comments as needed.
-    After all downloads, consolidates all data into a single JSON file.
+    After all downloads, consolidates all data into a single JSON file in Weekly_Data folder.
     """
     parser = argparse.ArgumentParser(description='Fetch and consolidate Gerrit comments for JIRA issues.')
     parser.add_argument('--csv', required=True, help='Path to the JIRA CSV file')
@@ -116,14 +139,24 @@ def main():
     parser.add_argument('--password', help='Gerrit password (optional for auto mode)')
     args = parser.parse_args()
 
+    # Ensure Weekly_Data directory exists
+    weekly_data_dir = ensure_weekly_data_dir()
+
     # Set up authentication if provided
     if args.user and args.password:
         global AUTH
         AUTH = (args.user, args.password)
     else:
-        # For auto mode, we'll skip Gerrit processing if no credentials
-        logging.warning("No Gerrit credentials provided. Skipping Gerrit comment processing.")
-        AUTH = None
+        # Try to load Gerrit credentials from settings.json
+        settings = load_settings()
+        g_user = settings.get('gerrit_username')
+        g_pass = settings.get('gerrit_password')
+        if g_user and g_pass:
+            AUTH = (g_user, g_pass)
+            logging.info("Loaded Gerrit credentials from settings.json")
+        else:
+            logging.warning("No Gerrit credentials provided. Skipping Gerrit comment processing.")
+            AUTH = None
 
     issue_keys, gerrit_links = extract_issue_keys_and_links(args.csv)
 
@@ -141,7 +174,7 @@ def main():
                 addressed_keys = re.findall(r'[A-Z]+-\d+', commit_message)
                 for key in issue_keys:
                     if key in addressed_keys:
-                        comments = download_comments(change_number, project, key)
+                        comments = download_comments(change_number, project, key, weekly_data_dir)
                         if comments is not None:
                             consolidated.append({
                                 'issue_key': key,
@@ -160,15 +193,18 @@ def main():
                 'comments': {}
             })
 
-    # Write consolidated data to the specified output file
-    with open(args.output, 'w', encoding='utf-8') as f:
+    # Write consolidated data to the specified output file in Weekly_Data folder
+    week_num = date.today().isocalendar()[1]
+    year_num = date.today().year
+    auto_name = f'Week{week_num}_{year_num}.json'
+    output_path = os.path.join(weekly_data_dir, auto_name)
+    with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(consolidated, f, indent=2)
-    logging.info(f'Consolidated data written to {args.output}')
+    logging.info(f'Consolidated data written to {output_path}')
 
-    # Delete all JSON files in the input CSV directory except the consolidated file
-    target_dir = os.path.dirname(os.path.abspath(args.csv))
-    consolidated_path = os.path.abspath(args.output)
-    for fname in glob.glob(os.path.join(target_dir, '*.json')):
+    # Delete all intermediate JSON files in Weekly_Data directory except the consolidated file
+    consolidated_path = os.path.abspath(output_path)
+    for fname in glob.glob(os.path.join(weekly_data_dir, '*.json')):
         if os.path.abspath(fname) == consolidated_path:
             continue
         try:

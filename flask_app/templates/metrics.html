@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Metrics | Team Sentiment Analysis{% endblock %}
+{% block content %}
+<div class="my-4">
+    <h4 class="text-primary">Metrics</h4>
+</div>
+<div class="card">
+    <div class="card-body">
+        <form method="get" action="/metrics" class="row g-3">
+            <div class="col-md-6">
+                <label for="engineer" class="form-label">Engineer</label>
+                <select id="engineer" name="member" class="form-select">
+                    {% for member in filters.members %}
+                    <option value="{{ member }}" {% if selected_member == member %}selected{% endif %}>{{ member }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="weeks" class="form-label">Number of weeks</label>
+                <select id="weeks" name="weeks" class="form-select">
+                    {% for w in filters.weeks_options %}
+                    <option value="{{ w }}" {% if selected_weeks == w %}selected{% endif %}>{{ w }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-chart-line"></i> View Metrics
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_weeks == 1 and not chart_ready %}
+<div class="alert alert-info mt-3">No weekly files found in <code>Weekly_Data</code> (e.g., <code>WeekXX_YYYY.csv/json</code>). Please generate them first.</div>
+{% endif %}
+
+{% if chart_ready %}
+<div class="card mt-4">
+  <div class="card-body">
+    <h6 class="mb-3">Sentiment for {% if selected_member and selected_member != 'All' %}{{ selected_member }}{% else %}All Engineers{% endif %} (Last Week)</h6>
+    <canvas id="sentimentChart" height="120"></canvas>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script id="chartReady" type="application/json">{{ chart_ready | tojson }}</script>
+<script id="sentimentCounts" type="application/json">{{ sentiment_counts | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  (function() {
+    var readyEl = document.getElementById('chartReady');
+    if (!readyEl) return;
+    var chartReady = false;
+    try { chartReady = JSON.parse(readyEl.textContent || 'false'); } catch (e) { chartReady = false; }
+    if (!chartReady) return;
+    var dataEl = document.getElementById('sentimentCounts');
+    var data = { Positive: 0, Neutral: 0, Negative: 0 };
+    try { data = JSON.parse((dataEl && dataEl.textContent) || '{}'); } catch (e) {}
+    var canvas = document.getElementById('sentimentChart');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Negative'],
+        datasets: [{
+          label: 'Negative',
+          data: [data.Negative || 0],
+          backgroundColor: '#F44336',
+          barThickness: 18,
+          maxBarThickness: 22,
+          categoryPercentage: 0.5,
+          barPercentage: 0.5
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  })();
+</script>
+{% endblock %} 
