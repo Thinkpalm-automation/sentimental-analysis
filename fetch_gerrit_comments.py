@@ -15,6 +15,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(mes
 # Gerrit credentials will be set from command-line arguments
 AUTH = None
 
+SETTINGS_DIR = os.path.join(os.path.expanduser('~'), 'Documents', 'sentiment-analysis')
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, 'settings.json')
+
 def ensure_weekly_data_dir():
     """Ensure the Weekly_Data directory exists in the project root."""
     project_root = os.path.dirname(os.path.abspath(__file__))
@@ -23,8 +26,9 @@ def ensure_weekly_data_dir():
     return weekly_data_dir
 
 def load_settings():
-    """Load settings from settings.json (project root or flask_app/)."""
+    """Load settings from Documents/sentiment-analysis or project fallback"""
     candidates = [
+        SETTINGS_FILE,
         os.path.join(os.path.dirname(__file__), 'flask_app', 'settings.json'),
         os.path.join(os.path.dirname(__file__), 'settings.json'),
     ]

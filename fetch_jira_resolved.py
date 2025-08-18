@@ -30,7 +30,26 @@ TEAM_MEMBERS_DICT = {
     'IRIS': ['jayapriya.subramanian', 'vishnupriya.ravichandran'],
     'Cloud': ['sandeep.sriram', 'rajendran.ravichandran'],
     'Eightfold': ['Sabarinathan Balu', 'Kalaivani K', 'dsampath', 'Umamageswari Balaganesan']
+    
 }
+
+SETTINGS_DIR = os.path.join(os.path.expanduser('~'), 'Documents', 'sentiment-analysis')
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, 'settings.json')
+
+def load_settings() -> Dict[str, Any]:
+    candidates = [
+        SETTINGS_FILE,
+        os.path.join(os.path.dirname(__file__), 'flask_app', 'settings.json'),
+        os.path.join(os.path.dirname(__file__), 'settings.json'),
+    ]
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 
 def get_previous_week_range() -> Tuple[str, str]:
@@ -82,22 +101,6 @@ def build_jql(weeks: int, assignees: List[str], projects: List[str], jql_overrid
         clauses.append("resolutiondate >= -1w")
     
     return " AND ".join(clauses)
-
-
-def load_settings() -> Dict[str, Any]:
-    """Load Jira settings from known locations."""
-    candidates = [
-        os.path.join(os.path.dirname(__file__), 'flask_app', 'settings.json'),
-        os.path.join(os.path.dirname(__file__), 'settings.json'),
-    ]
-    for path in candidates:
-        try:
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception:
-            pass
-    return {}
 
 
 def resolve_config(args: argparse.Namespace) -> Tuple[str, str, str, str]:

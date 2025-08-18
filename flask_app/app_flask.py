@@ -9,33 +9,37 @@ from datetime import datetime, timedelta
 import subprocess
 import tempfile
 import logging
-
-# --- Sentiment Analysis Keyword Lists and Functions (from app.py) ---
+import re
 import json
 import os
 
-# Settings file path
-SETTINGS_FILE = 'settings.json'
+# --- Sentiment Analysis Keyword Lists and Functions (from app.py) ---
+
+
+# Settings path in user's Documents/sentiment-analysis
+SETTINGS_DIR = os.path.join(os.path.expanduser('~'), 'Documents', 'sentiment-analysis')
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, 'settings.json')
 
 def load_settings():
-    """Load settings from JSON file"""
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading settings: {e}")
-    return {}
+	"""Load settings from JSON file in Documents/sentiment-analysis"""
+	if os.path.exists(SETTINGS_FILE):
+		try:
+			with open(SETTINGS_FILE, 'r') as f:
+				return json.load(f)
+		except Exception as e:
+			print(f"Error loading settings: {e}")
+	return {}
 
 def save_settings(settings):
-    """Save settings to JSON file"""
-    try:
-        with open(SETTINGS_FILE, 'w') as f:
-            json.dump(settings, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving settings: {e}")
-        return False
+	"""Save settings to JSON file in Documents/sentiment-analysis"""
+	try:
+		os.makedirs(SETTINGS_DIR, exist_ok=True)
+		with open(SETTINGS_FILE, 'w') as f:
+			json.dump(settings, f, indent=2)
+		return True
+	except Exception as e:
+		print(f"Error saving settings: {e}")
+		return False
 
 BUG_NEGATIVE_KEYWORDS = [
     "not reproducible", "cannot reproduce", "unable to reproduce", "not a bug", "works as designed", "as per design", "expected behavior", "duplicate issue", "duplicate of", "already fixed", "fix available", "configuration issue", "environment issue", "invalid bug", "invalid issue", "not valid", "not required", "user error", "tester error",
@@ -58,8 +62,7 @@ OTHER_POSITIVE_KEYWORDS = [
 GERRIT_NEGATIVE_KEYWORDS = [
     "not needed", "unused variable", "remove this", "should be deleted", "unnecessary", "redundant", "typo", "incorrect", "does not work", "breaks", "missing", "needs improvement", "not clear", "confusing", "bad practice", "hardcoded", "magic number", "not efficient", "performance issue", "security issue", "potential bug", "should be refactored", "not following convention", "incomplete", "wrong", "fails", "deprecated", "not tested", "test missing", "should be documented", "no comments", "unclear logic", "duplicate code", "not readable", "too complex", "overcomplicated", "not optimal", "incorrect indentation", "formatting issue", "conflicts with", "not reviewed", "needs changes", "needs update", "needs rebase", "not aligned", "not matching", "not consistent", "not handled", "not covered", "not robust", "not thread safe", "race condition", "memory leak", "null pointer", "exception not handled", "error prone", "not scalable", "not maintainable"
 ]
-import re
-import pandas as pd
+
 
 def validate_jira_closure_comment(comment: str) -> dict:
     comment = str(comment).strip().lower()
