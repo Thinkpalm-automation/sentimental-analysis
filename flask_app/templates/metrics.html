@@ -47,8 +47,8 @@
 {% if chart_ready %}
 <div class="card mt-4">
   <div class="card-body">
-    <h6 class="mb-3">Sentiment for {% if selected_member and selected_member != 'All' %}{{ selected_member }}{% else %}{% if selected_squad and selected_squad != 'All' %}{{ selected_squad }} Squad{% else %}All Engineers{% endif %}{% endif %} (Last Week)</h6>
-    <canvas id="sentimentChart" height="120"></canvas>
+    <h6 class="mb-3">Negative Trend (Daily) {% if selected_member and selected_member != 'All' %}for {{ selected_member }}{% else %}{% if selected_squad and selected_squad != 'All' %}for {{ selected_squad }} Squad{% else %}for All Engineers{% endif %}{% endif %}</h6>
+    <canvas id="sentimentChart" height="160"></canvas>
   </div>
 </div>
 {% endif %}
@@ -73,7 +73,8 @@
 {% endblock %}
 {% block scripts %}
 <script id="chartReady" type="application/json">{{ chart_ready | tojson }}</script>
-<script id="sentimentCounts" type="application/json">{{ sentiment_counts | tojson }}</script>
+<script id="dailyLabels" type="application/json">{{ daily_labels | tojson }}</script>
+<script id="dailyCounts" type="application/json">{{ daily_counts | tojson }}</script>
 <script id="errorShow" type="application/json">{{ error_show | tojson }}</script>
 <script id="errorMessage" type="application/json">{{ error_message | tojson }}</script>
 <script>
@@ -113,24 +114,26 @@
     var chartReady = false;
     try { chartReady = JSON.parse(readyEl.textContent || 'false'); } catch (e) { chartReady = false; }
     if (!chartReady) return;
-    var dataEl = document.getElementById('sentimentCounts');
-    var data = { Positive: 0, Neutral: 0, Negative: 0 };
-    try { data = JSON.parse((dataEl && dataEl.textContent) || '{}'); } catch (e) {}
+    function parseJson(id, fallback){
+      var el = document.getElementById(id);
+      try { return JSON.parse((el && el.textContent) || ''); } catch(e){ return fallback; }
+    }
+    var labels = parseJson('dailyLabels', ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
+    var counts = parseJson('dailyCounts', [0,0,0,0,0,0,0]);
     var canvas = document.getElementById('sentimentChart');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
     new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: {
-        labels: ['Negative'],
+        labels: labels,
         datasets: [{
-          label: 'Negative',
-          data: [data.Negative || 0],
-          backgroundColor: '#F44336',
-          barThickness: 20,
-          maxBarThickness: 24,
-          categoryPercentage: 0.5,
-          barPercentage: 0.5
+          label: 'Negative (per day)',
+          data: counts,
+          borderColor: '#F44336',
+          backgroundColor: 'rgba(244,67,54,0.15)',
+          fill: false,
+          tension: 0.3
         }]
       },
       options: {

@@ -1308,6 +1308,9 @@ def metrics():
     if selected_weeks > 1 and available_weeks < selected_weeks:
         error_show = True
         error_message = f"Only {available_weeks} week(s) of data found, but you selected {selected_weeks}."
+    # Daily trend arrays (Mon..Sun)
+    daily_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    daily_counts = [0, 0, 0, 0, 0, 0, 0]
     # --- Compute only for latest week when weeks == 1 and no error ---
     if selected_weeks == 1 and not error_show:
         try:
@@ -1349,30 +1352,16 @@ def metrics():
                 sentiment_counts["Positive"] += int((filtered_df['Customer Sentiment'] == 'Positive').sum())
                 sentiment_counts["Neutral"] += int((filtered_df['Customer Sentiment'] == 'Neutral').sum())
                 sentiment_counts["Negative"] += int((filtered_df['Customer Sentiment'] == 'Negative').sum())
-                # Include Gerrit sentiments if JSON exists
-                if os.path.exists(json_path):
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        gerrit_data = json.load(f)
-                    issue_key_to_assignee = dict(zip(processed_df['Issue key'], processed_df['Assignee']))
-                    for entry in gerrit_data:
-                        issue_key = entry.get('issue_key')
-                        assignee = issue_key_to_assignee.get(issue_key)
-                        if selected_member and selected_member != 'All':
-                            if not assignee or not is_team_member(assignee, [selected_member]):
-                                continue
-                        elif selected_squad and selected_squad != 'All':
-                            if not assignee or not is_team_member(assignee, TEAM_MEMBERS_DICT.get(selected_squad, [])):
-                                continue
-                        comments = entry.get('comments', {})
-                        if isinstance(comments, dict):
-                            for comment_list in comments.values():
-                                if isinstance(comment_list, list):
-                                    for comment in comment_list:
-                                        if isinstance(comment, dict):
-                                            msg = comment.get('message')
-                                            s, _, _ = get_gerrit_sentiment(msg)
-                                            if s in sentiment_counts:
-                                                sentiment_counts[s] += 1
+                # Build daily negative trend (based on Created date)
+                try:
+                    dt = pd.to_datetime(filtered_df['Created'], errors='coerce')
+                    day_idx = dt.dt.weekday  # 0=Mon ... 6=Sun
+                    neg_mask = (filtered_df['Customer Sentiment'] == 'Negative')
+                    for i in range(7):
+                        daily_counts[i] = int(((day_idx == i) & neg_mask).sum())
+                except Exception:
+                    pass
+                # Include Gerrit sentiments if JSON exists (Gerrit lacks timestamps in our JSON; skip per-day addition)
                 chart_ready = True
         except Exception:
             chart_ready = False
@@ -1385,7 +1374,9 @@ def metrics():
         sentiment_counts=sentiment_counts,
         chart_ready=chart_ready,
         error_show=error_show,
-        error_message=error_message
+        error_message=error_message,
+        daily_labels=daily_labels,
+        daily_counts=daily_counts
     )
 
 @app.route('/download_auto_csv', methods=['GET'])
