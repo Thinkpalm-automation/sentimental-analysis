@@ -1288,7 +1288,7 @@ def metrics():
     filters = {
         'squads': squads,
         'members': ['All'] + base_members,
-        'weeks_options': [1, 2, 3, 4, 5, 6]
+        'weeks_options': [1, 2, 3, 4, 5, 6, 7, 8]
     }
     sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
     chart_ready = False
@@ -1296,11 +1296,22 @@ def metrics():
     project_root = os.path.dirname(os.path.dirname(__file__))
     weekly_dir = os.path.join(project_root, 'Weekly_Data')
     available_weeks = 0
+    # Map of (year, week) -> {'csv': filename or None, 'json': filename or None}
+    week_index = {}
     if os.path.isdir(weekly_dir):
         try:
             for fname in os.listdir(weekly_dir):
-                if re.match(r'^Week\d+_\d+\.csv$', fname):
-                    available_weeks += 1
+                m = re.match(r'^Week(\d+)_(\d+)\s*\.(csv|json)$', fname)
+                if m:
+                    w = int(m.group(1))
+                    y = int(m.group(2))
+                    ext = m.group(3).lower()
+                    key = (y, w)
+                    entry = week_index.get(key, {'csv': None, 'json': None})
+                    entry[ext] = fname
+                    week_index[key] = entry
+            # Count only weeks that have a CSV present (needed for charting)
+            available_weeks = sum(1 for v in week_index.values() if v.get('csv'))
         except Exception:
             available_weeks = 0
     error_show = False
@@ -1311,30 +1322,31 @@ def metrics():
     # Daily trend arrays (Mon..Sun)
     daily_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     daily_counts = [0, 0, 0, 0, 0, 0, 0]
-    # --- Compute only for latest week when weeks == 1 and no error ---
-    if selected_weeks == 1 and not error_show:
+    trend_label = 'Daily'
+    # --- Compute for the latest N weeks (N = selected_weeks) ---
+    if not error_show and week_index:
         try:
-            latest_csv = None
-            latest_year_week = (-1, -1)
-            if os.path.isdir(weekly_dir):
-                for fname in os.listdir(weekly_dir):
-                    m = re.match(r'^Week(\d+)_(\d+)\.csv$', fname)
-                    if m:
-                        w = int(m.group(1))
-                        y = int(m.group(2))
-                        if (y, w) > latest_year_week:
-                            latest_year_week = (y, w)
-                            latest_csv = fname
-            if latest_csv:
-                base = latest_csv.rsplit('.', 1)[0]
-                csv_path = os.path.join(weekly_dir, latest_csv)
-                json_path = os.path.join(weekly_dir, base + '.json')
-            else:
-                csv_path = ''
-                json_path = ''
-            if os.path.exists(csv_path):
+            # Sort by (year, week) descending; pick the latest N unique weeks
+            sorted_weeks = sorted(week_index.keys(), reverse=True)
+            # Consider only weeks that have CSVs
+            sorted_weeks_with_csv = [k for k in sorted_weeks if week_index[k].get('csv')]
+            selected_keys = sorted_weeks_with_csv[:selected_weeks]
+
+            combined_frames = []
+            weekly_negative_counts = []
+
+            for key in selected_keys:
+                # Prefer CSV for per-day charting; JSON lacks timestamps for daily trend
+                csv_fname = week_index[key].get('csv')
+                if not csv_fname:
+                    continue
+                csv_path = os.path.join(weekly_dir, csv_fname)
+                if not os.path.exists(csv_path):
+                    continue
+
                 df = pd.read_csv(csv_path)
                 processed_df = process_data(df)
+
                 # Apply squad/member filters
                 if selected_member and selected_member != 'All':
                     bug_df = processed_df[(processed_df['Issue Type'].str.lower() == 'bug') & (processed_df['Reporter'].apply(lambda x: is_team_member(x, [selected_member])))]
@@ -1348,20 +1360,37 @@ def metrics():
                         filtered_df = pd.concat([bug_df, nonbug_df], ignore_index=True)
                     else:
                         filtered_df = processed_df
-                # Aggregate sentiments from CSV
-                sentiment_counts["Positive"] += int((filtered_df['Customer Sentiment'] == 'Positive').sum())
-                sentiment_counts["Neutral"] += int((filtered_df['Customer Sentiment'] == 'Neutral').sum())
-                sentiment_counts["Negative"] += int((filtered_df['Customer Sentiment'] == 'Negative').sum())
-                # Build daily negative trend (based on Created date)
-                try:
-                    dt = pd.to_datetime(filtered_df['Created'], errors='coerce')
-                    day_idx = dt.dt.weekday  # 0=Mon ... 6=Sun
-                    neg_mask = (filtered_df['Customer Sentiment'] == 'Negative')
-                    for i in range(7):
-                        daily_counts[i] = int(((day_idx == i) & neg_mask).sum())
-                except Exception:
-                    pass
-                # Include Gerrit sentiments if JSON exists (Gerrit lacks timestamps in our JSON; skip per-day addition)
+
+                combined_frames.append(filtered_df)
+                # For weekly view, compute total negatives for this week after filtering
+                weekly_negative_counts.append(int((filtered_df['Customer Sentiment'] == 'Negative').sum()))
+
+            if combined_frames:
+                combined_df = pd.concat(combined_frames, ignore_index=True)
+
+                # Aggregate sentiments from CSV(s)
+                sentiment_counts["Positive"] += int((combined_df['Customer Sentiment'] == 'Positive').sum())
+                sentiment_counts["Neutral"] += int((combined_df['Customer Sentiment'] == 'Neutral').sum())
+                sentiment_counts["Negative"] += int((combined_df['Customer Sentiment'] == 'Negative').sum())
+
+                if len(selected_keys) <= 1:
+                    # Daily view for a single latest week
+                    try:
+                        dt = pd.to_datetime(combined_df['Created'], errors='coerce')
+                        day_idx = dt.dt.weekday  # 0=Mon ... 6=Sun
+                        neg_mask = (combined_df['Customer Sentiment'] == 'Negative')
+                        for i in range(7):
+                            daily_counts[i] = int(((day_idx == i) & neg_mask).sum())
+                    except Exception:
+                        pass
+                    trend_label = 'Daily'
+                else:
+                    # Weekly view for multiple latest weeks
+                    trend_label = 'Weekly'
+                    num_weeks = len(weekly_negative_counts)
+                    daily_labels = [f"Week {i+1}" for i in range(num_weeks)]  # Week 1 = latest
+                    daily_counts = weekly_negative_counts
+
                 chart_ready = True
         except Exception:
             chart_ready = False
@@ -1376,7 +1405,8 @@ def metrics():
         error_show=error_show,
         error_message=error_message,
         daily_labels=daily_labels,
-        daily_counts=daily_counts
+        daily_counts=daily_counts,
+        trend_label=trend_label
     )
 
 @app.route('/download_auto_csv', methods=['GET'])

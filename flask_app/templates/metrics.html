@@ -45,10 +45,22 @@
 {% endif %}
 
 {% if chart_ready %}
-<div class="card mt-4">
-  <div class="card-body">
-    <h6 class="mb-3">Negative Trend (Daily) {% if selected_member and selected_member != 'All' %}for {{ selected_member }}{% else %}{% if selected_squad and selected_squad != 'All' %}for {{ selected_squad }} Squad{% else %}for All Engineers{% endif %}{% endif %}</h6>
-    <canvas id="sentimentChart" height="160"></canvas>
+<div class="row mt-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="mb-3">Sentiment Distribution</h6>
+        <canvas id="sentimentPie" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="mb-3">Negative Trend ({{ trend_label }}) {% if selected_member and selected_member != 'All' %}for {{ selected_member }}{% else %}{% if selected_squad and selected_squad != 'All' %}for {{ selected_squad }} Squad{% else %}for All Engineers{% endif %}{% endif %} - Total Negative: {{ sentiment_counts.Negative }}</h6>
+        <canvas id="sentimentChart" height="280"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 {% endif %}
@@ -75,6 +87,8 @@
 <script id="chartReady" type="application/json">{{ chart_ready | tojson }}</script>
 <script id="dailyLabels" type="application/json">{{ daily_labels | tojson }}</script>
 <script id="dailyCounts" type="application/json">{{ daily_counts | tojson }}</script>
+<script id="trendLabel" type="application/json">{{ trend_label | tojson }}</script>
+<script id="sentimentCounts" type="application/json">{{ sentiment_counts | tojson }}</script>
 <script id="errorShow" type="application/json">{{ error_show | tojson }}</script>
 <script id="errorMessage" type="application/json">{{ error_message | tojson }}</script>
 <script>
@@ -118,8 +132,28 @@
       var el = document.getElementById(id);
       try { return JSON.parse((el && el.textContent) || ''); } catch(e){ return fallback; }
     }
+    // Pie chart
+    var sc = parseJson('sentimentCounts', {Positive:0, Neutral:0, Negative:0});
+    var pieCanvas = document.getElementById('sentimentPie');
+    if (pieCanvas) {
+      new Chart(pieCanvas.getContext('2d'), {
+        type: 'pie',
+        data: {
+          labels: ['Positive', 'Neutral', 'Negative'],
+          datasets: [{
+            data: [sc.Positive||0, sc.Neutral||0, sc.Negative||0],
+            backgroundColor: ['#4CAF50', '#FFC107', '#F44336']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
     var labels = parseJson('dailyLabels', ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
     var counts = parseJson('dailyCounts', [0,0,0,0,0,0,0]);
+    var trendLabel = parseJson('trendLabel', 'Daily');
     var canvas = document.getElementById('sentimentChart');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
@@ -128,7 +162,7 @@
       data: {
         labels: labels,
         datasets: [{
-          label: 'Negative (per day)',
+          label: 'Negative (per ' + String(trendLabel || 'Daily').toLowerCase() + ')',
           data: counts,
           borderColor: '#F44336',
           backgroundColor: 'rgba(244,67,54,0.15)',
